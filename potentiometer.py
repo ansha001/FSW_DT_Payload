@@ -9,16 +9,16 @@ POT4_ADDR = 0x2F  # U7 - 3V3, 3V3
 
 # MCP4452 Wiper Registers
 WIPER_0 = 0x00  
-WIPER_1 = 0x10  
-WIPER_2 = 0x60  
-WIPER_3 = 0x70  
+WIPER_1 = 0x01  
+WIPER_2 = 0x06  
+WIPER_3 = 0x07  
 
 bus = smbus.SMBus(1) #I2C bus 1 on R Pi
 
 def set_wiper(wiper_register, value):
     """ Set MCP4452 wiper position (0-257) """
-    if value < 0 or value > 257:
-        raise ValueError("Wiper value out of range (0-257)")
+    if value < 0 or value > 255:
+        raise ValueError("Wiper value out of range (0-255)")
 
     msb = (value >> 8) & 0x01  
     lsb = value & 0xFF         
@@ -37,6 +37,7 @@ try:
 
     test_values = [0, 64, 128, 192, 257]  # resistance levels
     
+
     for value in test_values:
         print(f"\nSetting Wiper 0 to {value}")
         set_wiper(WIPER_0, value)
