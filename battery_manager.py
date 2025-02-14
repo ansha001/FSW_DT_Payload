@@ -5,7 +5,7 @@ import time
 import csv
 import logging
 
-# ==============================
+# =============================
 #  MOCK I2C AND GPIO FOR WINDOWS
 # =============================
 

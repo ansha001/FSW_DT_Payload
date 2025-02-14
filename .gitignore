@@ -1,4 +1,6 @@
 __pycache__/
 dt/
-test2.py
 battery_log.csv
+battery_log.txt
+test2.py
+system_state.json
