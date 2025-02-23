@@ -1,81 +1,82 @@
 import smbus2
+import smbus2
 import time
 
-# MCP4452 I2C Address
-POT1_ADDR = 0x2C  # U2 - GND, GND
-POT2_ADDR = 0x2E  # U6 - 3V3, GND
-POT3_ADDR = 0x2D  # U3 - GND, 3V3
-POT4_ADDR = 0x2F  # U7 - 3V3, 3V3
-
-#Decimal addresses
-POT1= 44  
-
+POT1_ADDR = 0x2C  
+POT2_ADDR = 0x2E 
+POT3_ADDR = 0x2D  
+POT4_ADDR = 0x2F  
 
 # MCP4452 Wiper Registers
-WIPER_0 = 0x00  
-WIPER_1 = 0x01  
-WIPER_2 = 0x06  
-WIPER_3 = 0x07  
+WIPER_0 = 0x00
+WIPER_1 = 0x01
+WIPER_2 = 0x06
+WIPER_3 = 0x07
 
-bus = smbus.SMBus(1) #I2C bus 1 on R Pi
+bus = smbus2.SMBus(1)  
 
-# def setPOS(uint8_t i2cADR, uint8_t ch, uint8_t val):
-    
 
-def set_wiper_byte(wiper_register, value):
-    if value < 0 or value > 255:
-        raise ValueError("Wiper value out of range (0-255)")
-    try:
-        bus.write_byte_data(POT1_ADDR, wiper_register, value)
-        print(f"Wiper {hex(wiper_register)} set to {value}")
-    except OSError as e:
-        print("Error setting wiper val")
-        return -1
-    
-def set_wiper_block(wiper_register, value):
-    if value < 0 or value > 255:
-        raise ValueError("out of range (0-255)")
-    command_byte = (wiper_register << 4) | ((value >> 8) & 0x01)  # Include D8 bit
- 
-    lsb = value & 0xFF         
+def set_wiper(i2c_address, wiper_register, value, mode="byte"):
+    if value < 0 or value > 256:
+        raise ValueError("Wiper value out of range (0-256)")
 
-    bus.write_i2c_block_data(POT1_ADDR, command_byte, [lsb])
-    print(f"Wiper {hex(wiper_register)} set to {value}")
-    
-def read_wiper(wiper_register):
-        command_byte = (wiper_register << 4) | ((value >> 8) & 0x01)  # Include D8 bit
+    command_byte = (wiper_register << 4) | ((value >> 8) & 0x01)  
+    lsb = value & 0xFF  
 
     try:
-        data = bus.read_i2c_block_data(POT1_ADDR, command_byte, 16)
-        return value
+        if mode == "byte":
+            bus.write_byte_data(i2c_address, wiper_register, lsb)
+        elif mode == "block":
+            bus.write_i2c_block_data(i2c_address, command_byte, [lsb])
+        else:
+            raise ValueError("invalid mode")
     except OSError as e:
-        print("error reading")
+        print(f"Error setting wiper {wiper_register}: {e}")
         return -1
+
+
+
+
+def read_wiper(i2c_address, wiper_register, mode="byte"):
+    try:
+        if mode == "byte":
+            data = bus.read_byte_data(i2c_address, wiper_register)
+            return data
+        elif mode == "block":
+            command_byte = (wiper_register << 4) | (0x03 << 2)  # read command
+            bus.write_byte(i2c_address, command_byte)
+            data = bus.read_i2c_block_data(i2c_address, command_byte, 2)
+            value = ((data[0] & 0x01) << 8) | data[1]  # combine MSB and LSB for 9bit value
+            return value
+        else:
+            raise ValueError("invalid mode")
+    except OSError as e:
+        print(f"Error reading wiper {wiper_register}: {e}")
+        return -1
+
+
 try:
-    print("Testing MCP4452 Digital Potentiometer...")
-
-    test_values = [0, 64, 128, 192, 256]  
-    
+    test_values = [0, 64, 128, 192, 255]
 
     for value in test_values:
-        print(f"\nSetting Wiper 0 to {value}")
-        set_wiper_block(WIPER_0, value)
-#        set_wiper_block(WIPER_1, value)
-#        set_wiper_block(WIPER_2, value)
- #       set_wiper_block(WIPER_3, value) 
-        time.sleep(1)  
+        print(f"\nset all wipers to {value}")
 
-        read_value1 = read_wiper(WIPER_0)
-        read_block = bus.read_i2c_block_data(POT1, 0, 16)
-  #      read_value2 = read_wiper(WIPER_1)
-   #     read_value3 = read_wiper(WIPER_2)
-    #    read_value4 = read_wiper(WIPER_3)
-        print(f"Read Wiper 0 Value: {read_value1}")
-     #   print(f"Read Wiper 1 Value: {read_value2}")
-      #  print(f"Read Wiper 2 Value: {read_value3}")
-       # print(f"Read Wiper 3 Value: {read_value4}")
+        set_wiper(POT1_ADDR, WIPER_0, value, mode="block")
+#        set_wiper(POT1_ADDR, WIPER_1, value, mode="block")
+ #       set_wiper(POT1_ADDR, WIPER_2, value, mode="block")
+  #      set_wiper(POT1_ADDR, WIPER_3, value, mode="block")
 
-    print("\nTest completed successfully")
+        time.sleep(0.5)  
+
+        read_value1 = read_wiper(POT1_ADDR, WIPER_0, mode="byte")
+ #       read_value2 = read_wiper(POT1_ADDR, WIPER_1, mode="block")
+  #      read_value3 = read_wiper(POT1_ADDR, WIPER_2, mode="byte")
+   #     read_value4 = read_wiper(POT1_ADDR, WIPER_3, mode="block")
+
+        print(f"Read Wiper 0 (Byte): {read_value1}")
+#        print(f"Read Wiper 1 (Block): {read_value2}")
+ #       print(f"Read Wiper 2 (Byte): {read_value3}")
+  #      print(f"Read Wiper 3 (Block): {read_value4}")
 
 except KeyboardInterrupt:
     print("\nTest interrupted")

@@ -4,3 +4,5 @@ battery_log.csv
 battery_log.txt
 test2.py
 system_state.json
+gpio.py
+battery_cycle.py
