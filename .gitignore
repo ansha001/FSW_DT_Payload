@@ -5,4 +5,4 @@ battery_log.txt
 test2.py
 system_state.json
 gpio.py
-battery_cycle.py
+battery_manager.py
