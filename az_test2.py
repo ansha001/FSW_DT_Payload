@@ -23,8 +23,8 @@ EN_CUR_GPIO_LIST = [12,16,26] #GPIO 12,16,26 is physical pins 32,36,37
 bus = smbus2.SMBus(1)
 
 #set test parameters
-log_freq = 0.50 #log at X Hz
-dt_log = 1/log_freq #time step between logs
+LOG_FREQ = 0.50 #log at X Hz
+DT_LOG = 1/LOG_FREQ #time step between logs
 V_CHG_LIMIT = 4.0
 V_DIS_LIMIT = 3.2
 
@@ -39,15 +39,15 @@ with open(file_name, 'w', encoding='UTF8', newline='') as f:
     writer.writerow(header)
     
 # set other parameters TODO read this from a json file or similar
-temp_max =  60  #above this, go to safe mode
-temp_min = -10  #below this, go to safe mode
-temp_chg_upper = 15
-temp_chg_lower = 5
-chg_upper_setpt = -40
-chg_lower_setpt = -10
-chg_setpt_delta = 2
-dis_setpt = 40
-dis_setpt_delta = 2
+TEMP_MAX =  60  #above this, go to safe mode
+TEMP_MIN = -10  #below this, go to safe mode
+TEMP_CHG_UPPER = 15
+TEMP_CHG_LOWER = 5
+CHG_UPPER_SETPT = -40
+CHG_LOWER_SETPT = -10
+CHG_SETPT_DELTA = 2
+DIS_SETPT = 40
+DIS_SETPT_DELTA = 2
 chg_vals = [9, 9, 9]
 dis_vals = [76, 76, 76]
 
@@ -257,12 +257,12 @@ if __name__ == "__main__":
         # check safe temperatures
         temp_data = sensor_data[0:3]
         for i in range(1):
-            if temp_data[i] > temp_max or temp_data[i] < temp_min:
+            if temp_data[i] > TEMP_MAX or temp_data[i] < TEMP_MIN:
                 cell_mode[i] = 'IDLE'
                 cell_state[i] = 'IDLE'
                 safe_board(i)
         
-        if time_i > time_prev + dt_log:
+        if time_i > time_prev + DT_LOG:
             sensor_data = ping_sensors()
             log_sensor_data(time_i, sensor_data)
             temp_i = sensor_data[0:3]
@@ -295,28 +295,28 @@ if __name__ == "__main__":
                 # carry out mode we are in
                 if cell_mode[i] == 'CYCLE' and cell_state == 'CHG':
                     
-                    if temp_i[i] > temp_chg_upper:
-                        charge_setpoint = chg_upper_setpt
-                    elif temp_i[i] < temp_chg_lower:
-                        charge_setpoint = chg_lower_setpt
+                    if temp_i[i] > TEMP_CHG_UPPER:
+                        charge_setpoint = CHG_UPPER_SETPT
+                    elif temp_i[i] < TEMP_CHG_LOWER:
+                        charge_setpoint = CHG_LOWER_SETPT
                     else:
-                        charge_setpoint = chg_lower_setpt + (temp_i[i] - temp_chg_lower)*(chg_upper_setpt - chg_lower_setpt)/(temp_chg_upper - temp_chg_lower)
+                        charge_setpoint = CHG_LOWER_SETPT + (temp_i[i] - TEMP_CHG_LOWER)*(CHG_UPPER_SETPT - CHG_LOWER_SETPT)/(TEMP_CHG_UPPER - TEMP_CHG_LOWER)
                     
-                    if curr_i[i] < charge_setpoint - chg_setpt_delta:
+                    if curr_i[i] < charge_setpoint - CHG_SETPT_DELTA:
                         chg_vals[i] += 1
                         set_POT(i, chg_vals[i])
-                    elif curr_i[i] > charge_setpoint + chg_setpt_delta:
+                    elif curr_i[i] > charge_setpoint + CHG_SETPT_DELTA:
                         chg_vals[i] -= 1
                         set_POT(i, chg_vals[i])
                     
                     set_GPIO(i, 'ON', EN_CHG_GPIO_LIST)
                 elif cell_mode[i] == 'CYCLE' and cell_state == 'DIS':
-                    discharge_setpoint = dis_setpt
+                    discharge_setpoint = DIS_SETPT
                     
-                    if curr_i[i] < discharge_setpoint - dis_setpt_delta:
+                    if curr_i[i] < discharge_setpoint - DIS_SETPT_DELTA:
                         dis_vals[i] += 1
                         set_wiper(POT_ADDRS[3], POT_REGS[i], dis_vals[i], mode="block")
-                    elif curr_i[i] > discharge_setpoint + dis_setpt_delta:
+                    elif curr_i[i] > discharge_setpoint + DIS_SETPT_DELTA:
                         dis_vals[i] -= 1
                         set_wiper(POT_ADDRS[3], POT_REGS[i], dis_vals[i], mode="block")
                     

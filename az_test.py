@@ -1,8 +1,3 @@
-#code for battery cycling
-# AZ, Feb 24
-
-#
-
 import sys
 import os
 import serial
@@ -18,17 +13,34 @@ INA_ADDRS = [0x40, 0x41, 0x43] #INA 0,1,2
 TMP_ADDRS = [0x48, 0x49, 0x4B] #TMP 0,1,2
 POT_ADDRS = [0x2C, 0x2E, 0x2D, 0x2F] #POT 0,1,2,3
 POT_REGS  = [0x00, 0x01, 0x06, 0x07]
-EN_CHG_GPIO_LIST = [23,24,25] #GPIO 23,24,25 is physical pins 16,18,22
-EN_DIS_GPIO_LIST = [ 5, 6,13] #GPIO  5, 6,13 is physical pins 29,31,33
-EN_CUR_GPIO_LIST = [12,16,26] #GPIO 12,16,26 is physical pins 32,36,37
 
+# GPIO Pins
+EN_CHG_GPIO_LIST = [23, 24, 25] #GPIO 23,24,25 is physical pins 16,18,22
+EN_DIS_GPIO_LIST = [5, 6, 13] #GPIO  5, 6,13 is physical pins 29,31,33
+EN_CUR_GPIO_LIST = [12, 16, 26] #GPIO 12,16,26 is physical pins 32,36,37
+
+#Init I2C Bus
 bus = smbus2.SMBus(1)
 
 #set test parameters
-log_freq = 0.50 #log at X Hz
-dt_log = 1/log_freq #time step between logs
+LOG_FREQ = 0.50 #log at X Hz
+DT_LOG = 1/LOG_FREQ #time step between logs
 V_CHG_LIMIT = 4.0
 V_DIS_LIMIT = 3.2
+# set other parameters TODO read this from a json file or similar
+TEMP_MAX =  60  #above this, go to safe mode
+TEMP_MIN = -10  #below this, go to safe mode
+TEMP_CHG_UPPER = 15
+TEMP_CHG_LOWER = 5
+CHG_UPPER_SETPT = -40
+CHG_LOWER_SETPT = -10
+CHG_SETPT_DELTA = 2
+DIS_SETPT = 40
+DIS_SETPT_DELTA = 2
+
+SERIAL_PORT = '/dev/ttyUSB0'
+BAUDRATE = 9600
+SYS_TIMEOUT = 0.5
 
 file_name = 'ZZ_log_'
 trial = 1
@@ -40,58 +52,27 @@ with open(file_name, 'w', encoding='UTF8', newline='') as f:
     writer = csv.writer(f)
     writer.writerow(header)
     
-# set other parameters TODO read this from a json file or similar
-temp_max =  60  #above this, go to safe mode
-temp_min = -10  #below this, go to safe mode
-temp_chg_upper = 15
-temp_chg_lower = 5
-chg_upper_setpt = -40
-chg_lower_setpt = -10
-chg_setpt_delta = 2
-dis_setpt = 40
-dis_setpt_delta = 2
 chg_vals = [9, 9, 9]
 dis_vals = [76, 76, 76]
 
-
-def init_GPIO():
+def init_gpio():
     GPIO.setmode(GPIO.BCM)
-    GPIO.setup(EN_CHG_GPIO_LIST[0], GPIO.OUT)
-    GPIO.setup(EN_CHG_GPIO_LIST[1], GPIO.OUT)
-    GPIO.setup(EN_CHG_GPIO_LIST[2], GPIO.OUT)
-    GPIO.setup(EN_DIS_GPIO_LIST[0], GPIO.OUT)
-    GPIO.setup(EN_DIS_GPIO_LIST[1], GPIO.OUT)
-    GPIO.setup(EN_DIS_GPIO_LIST[2], GPIO.OUT)
-    GPIO.setup(EN_CUR_GPIO_LIST[0], GPIO.OUT)
-    GPIO.setup(EN_CUR_GPIO_LIST[1], GPIO.OUT)
-    GPIO.setup(EN_CUR_GPIO_LIST[2], GPIO.OUT)
-    GPIO.output(EN_CHG_GPIO_LIST[0], GPIO.LOW)  #set to LOW
-    GPIO.output(EN_CHG_GPIO_LIST[1], GPIO.LOW)  #set to LOW
-    GPIO.output(EN_CHG_GPIO_LIST[2], GPIO.LOW)  #set to LOW
-    GPIO.output(EN_DIS_GPIO_LIST[0], GPIO.LOW)  #set to LOW
-    GPIO.output(EN_DIS_GPIO_LIST[1], GPIO.LOW)  #set to LOW
-    GPIO.output(EN_DIS_GPIO_LIST[2], GPIO.LOW)  #set to LOW
-    GPIO.output(EN_CUR_GPIO_LIST[0], GPIO.LOW)  #set to LOW
-    GPIO.output(EN_CUR_GPIO_LIST[1], GPIO.LOW)  #set to LOW
-    GPIO.output(EN_CUR_GPIO_LIST[2], GPIO.LOW)  #set to LOW
+    for pin_group in [EN_CHG_GPIO_LIST, EN_DIS_GPIO_LIST, EN_CUR_GPIO_LIST]:
+        for pin in pin_group:
+            GPIO.setup(pin, GPIO.OUT)
+            GPIO.output(pin, GPIO.LOW)
     
-def set_wiper(i2c_address, wiper_register, value, mode="block"):
+def set_wiper(i2c_address, wiper_register, value):
     #set_wiper(POT1_ADDR, WIPER_0, value, mode="block")
     if value < 0 or value > 256:
         raise ValueError("Wiper value out of range (0-256)")
-
     command_byte = (wiper_register << 4) | ((value >> 8) & 0x01)  
     lsb = value & 0xFF  
 
     try:
-        if mode == "byte":
-            bus.write_byte_data(i2c_address, wiper_register, lsb)
-        elif mode == "block":
-            bus.write_i2c_block_data(i2c_address, command_byte, [lsb])
-        else:
-            raise ValueError("invalid mode")
+        bus.write_i2c_block_data(i2c_address, command_byte, [lsb])
     except OSError as e:
-        print(f"Error setting wiper {wiper_register}: {e}")
+        print(f"Error setting wiper {wiper_register} on {i2c_address}: {e}")
         return -1
 
 def set_POT(cell_num, VAL):
@@ -102,10 +83,10 @@ def set_POT(cell_num, VAL):
     B = A + (VAL%4 > 2)
     C = A + (VAL%4 > 1)
     D = A + (VAL%4 > 0)
-    set_wiper(POT_ADDRS[cell_num], POT_REGS[0], A, mode="block")
-    set_wiper(POT_ADDRS[cell_num], POT_REGS[1], B, mode="block")
-    set_wiper(POT_ADDRS[cell_num], POT_REGS[2], C, mode="block")
-    set_wiper(POT_ADDRS[cell_num], POT_REGS[3], D, mode="block")
+    set_wiper(POT_ADDRS[cell_num], POT_REGS[0], A)
+    set_wiper(POT_ADDRS[cell_num], POT_REGS[1], B)
+    set_wiper(POT_ADDRS[cell_num], POT_REGS[2], C)
+    set_wiper(POT_ADDRS[cell_num], POT_REGS[3], D)
     
 def read_wiper(i2c_address, wiper_register, mode="block"):
     try:
@@ -161,21 +142,34 @@ def read_voltage(INA_ADR = 0x40):
     bus_voltage = 1.28 * bus_voltage_raw * 1.25 / 1000  # in Volts
     return bus_voltage
 
-def read_current(INA_ADR = 0x40):
-    #current = 7 #TODO implment current read from INA
-    R_shunt = 1 #Ohm
-    shunt_voltage_raw = bus.read_word_data(INA_ADR, 0x01)  #should return 16-bit two's complement
-    shunt_voltage_raw = ((shunt_voltage_raw << 8) & 0xFF00) | (shunt_voltage_raw >> 8)
-    shunt_voltage = shunt_voltage_raw * 2.5  # in V
-    current = shunt_voltage / R_shunt
-    return current
+def read_current(INA_ADR = 0x40, state="CHG"):
+    if state=="DIS":
+        try:
+            ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=SYS_TIMEOUT)
+            ser.write('MEAS:CURR?\n'.encode())
+            I_ps = ser.readline().decode().strip()
+            ser.close()
 
-def set_GPIO(cell_num, state, GPIO_LIST):
-    # manipulate EN_CHG GPIO pins according to cell num and desired state
-    if state=='ON' or state=='HIGH':
-        GPIO.output(GPIO_LIST[cell_num], GPIO.HIGH) #set HIGH
+            current_from_ps = float(I_ps)
+
+            return abs(current_from_ps)  
+
+        except Exception as e:
+            print(f"Error reading power supply: {e}")
+            return None 
     else:
-        GPIO.output(GPIO_LIST[cell_num], GPIO.LOW) #set LOW
+        #current = 7 #TODO implment current read from INA
+        R_shunt = 1 #Ohm
+        shunt_voltage_raw = bus.read_word_data(INA_ADR, 0x01)  #should return 16-bit two's complement
+        shunt_voltage_raw = ((shunt_voltage_raw << 8) & 0xFF00) | (shunt_voltage_raw >> 8)
+
+        # apply two’s complement correction if negative
+        if shunt_voltage_raw & (1 << 15): # & with 100000000000000 to check if msb is 1 or 0
+            shunt_voltage_raw -= (1 << 16)
+
+        shunt_voltage = shunt_voltage_raw * 2.5  # in V
+        current = shunt_voltage / R_shunt
+    return current
         
 def ping_sensors():
     #read all the sensors
@@ -198,41 +192,29 @@ def log_sensor_data(time, data):
         writer = csv.writer(f)
         writer.writerow([str(time),str(data[0]),str(data[1]),str(data[2]),str(data[3]),str(data[4]),str(data[5]),str(data[6]),str(data[7]),str(data[8]),str(data[9]),str(data[10])])
     
-def safe_board(cell = -1):
-    if cell == -1:
-        #set everything to safe settings
-        set_GPIO(0, 'OFF', EN_CHG_GPIO_LIST)
-        set_GPIO(1, 'OFF', EN_CHG_GPIO_LIST)
-        set_GPIO(2, 'OFF', EN_CHG_GPIO_LIST)
-        set_GPIO(0, 'OFF', EN_DIS_GPIO_LIST)
-        set_GPIO(1, 'OFF', EN_DIS_GPIO_LIST)
-        set_GPIO(2, 'OFF', EN_DIS_GPIO_LIST)
-        set_GPIO(0, 'LOW', EN_CUR_GPIO_LIST)
-        set_GPIO(1, 'LOW', EN_CUR_GPIO_LIST)
-        set_GPIO(2, 'LOW', EN_CUR_GPIO_LIST)
-        set_wiper(POT_ADDRS[0], POT_REGS[0], 256, mode="block")
-        set_wiper(POT_ADDRS[0], POT_REGS[1], 256, mode="block")
-        set_wiper(POT_ADDRS[0], POT_REGS[2], 256, mode="block")
-        set_wiper(POT_ADDRS[0], POT_REGS[3], 256, mode="block")
-        set_wiper(POT_ADDRS[1], POT_REGS[0], 256, mode="block")
-        set_wiper(POT_ADDRS[1], POT_REGS[1], 256, mode="block")
-        set_wiper(POT_ADDRS[1], POT_REGS[2], 256, mode="block")
-        set_wiper(POT_ADDRS[1], POT_REGS[3], 256, mode="block")
-        set_wiper(POT_ADDRS[2], POT_REGS[0], 256, mode="block")
-        set_wiper(POT_ADDRS[2], POT_REGS[1], 256, mode="block")
-        set_wiper(POT_ADDRS[2], POT_REGS[2], 256, mode="block")
-        set_wiper(POT_ADDRS[2], POT_REGS[3], 256, mode="block")
-        set_wiper(POT_ADDRS[3], POT_REGS[0], 0, mode="block")
-        set_wiper(POT_ADDRS[3], POT_REGS[1], 0, mode="block")
-        set_wiper(POT_ADDRS[3], POT_REGS[2], 0, mode="block")
-        set_wiper(POT_ADDRS[3], POT_REGS[3], 0, mode="block")
-        print('board safe')
-    else:
-        #set only that channel to safe settings
-        set_GPIO(cell, 'OFF', EN_CHG_GPIO_LIST)
-        set_GPIO(cell, 'OFF', EN_DIS_GPIO_LIST)
-        set_GPIO(cell, 'LOW', EN_CUR_GPIO_LIST)
+def set_gpio_state(pin_list, state):
+    for pin in pin_list:
+        GPIO.output(pin, GPIO.HIGH if state else GPIO.LOW)
 
+def set_GPIO(cell_num, state, GPIO_LIST):
+    # manipulate EN_CHG GPIO pins according to cell num and desired state
+    if state=='ON' or state=='HIGH':
+        GPIO.output(GPIO_LIST[cell_num], GPIO.HIGH) #set HIGH
+    else:
+        GPIO.output(GPIO_LIST[cell_num], GPIO.LOW) #set LOW
+
+def safe_board():
+    set_gpio_state(EN_CHG_GPIO_LIST, False)
+    set_gpio_state(EN_DIS_GPIO_LIST, False)
+    set_gpio_state(EN_CUR_GPIO_LIST, False)
+    for pot in POT_ADDRS:
+        for reg in POT_REGS:
+            set_wiper(pot, reg, 256 if pot != POT_ADDRS[-1] else 0)
+
+def set_gpio_state(pin_list, state):
+    for pin in pin_list:
+        GPIO.output(pin, GPIO.HIGH if state else GPIO.LOW)
+        print('board safe')
 
 if __name__ == "__main__":
     #run initial setup
@@ -259,12 +241,12 @@ if __name__ == "__main__":
         # check safe temperatures
         temp_data = sensor_data[0:3]
         for i in range(1):
-            if temp_data[i] > temp_max or temp_data[i] < temp_min:
+            if temp_data[i] > TEMP_MAX or temp_data[i] < TEMP_MIN:
                 cell_mode[i] = 'IDLE'
                 cell_state[i] = 'IDLE'
                 safe_board(i)
         
-        if time_iter > time_prev + dt_log:
+        if time_iter > time_prev + DT_LOG:
             sensor_data = ping_sensors()
             log_sensor_data(time_i, sensor_data)
             temp_i = sensor_data[0:3]
@@ -297,30 +279,30 @@ if __name__ == "__main__":
                 # carry out mode and state we are in
                 if cell_mode[i] == 'CYCLE' and cell_state == 'CHG':
                     
-                    if temp_i[i] > temp_chg_upper:
-                        charge_setpoint = chg_upper_setpt
-                    elif temp_i[i] < temp_chg_lower:
-                        charge_setpoint = chg_lower_setpt
+                    if temp_i[i] > TEMP_CHG_UPPER:
+                        charge_setpoint = CHG_UPPER_SETPT
+                    elif temp_i[i] < TEMP_CHG_LOWER:
+                        charge_setpoint = CHG_LOWER_SETPT
                     else:
-                        charge_setpoint = chg_lower_setpt + (temp_i[i] - temp_chg_lower)*(chg_upper_setpt - chg_lower_setpt)/(temp_chg_upper - temp_chg_lower)
+                        charge_setpoint = CHG_LOWER_SETPT + (temp_i[i] - TEMP_CHG_LOWER)*(CHG_UPPER_SETPT - CHG_LOWER_SETPT)/(TEMP_CHG_UPPER - TEMP_CHG_LOWER)
                     
-                    if curr_i[i] < charge_setpoint - chg_setpt_delta:
+                    if curr_i[i] < charge_setpoint - CHG_SETPT_DELTA:
                         chg_vals[i] += 1
                         set_POT(i, chg_vals[i])
-                    elif curr_i[i] > charge_setpoint + chg_setpt_delta:
+                    elif curr_i[i] > charge_setpoint + CHG_SETPT_DELTA:
                         chg_vals[i] -= 1
                         set_POT(i, chg_vals[i])
                     
                     set_GPIO(i, 'ON', EN_CHG_GPIO_LIST)
                 elif cell_mode[i] == 'CYCLE' and cell_state == 'DIS':
-                    discharge_setpoint = dis_setpt
+                    discharge_setpoint = DIS_SETPT
                     
-                    if curr_i[i] < discharge_setpoint - dis_setpt_delta:
+                    if curr_i[i] < discharge_setpoint - DIS_SETPT_DELTA:
                         dis_vals[i] += 1
-                        set_wiper(POT_ADDRS[3], POT_REGS[i], dis_vals[i], mode="block")
-                    elif curr_i[i] > discharge_setpoint + dis_setpt_delta:
+                        set_wiper(POT_ADDRS[3], POT_REGS[i], dis_vals[i])
+                    elif curr_i[i] > discharge_setpoint + DIS_SETPT_DELTA:
                         dis_vals[i] -= 1
-                        set_wiper(POT_ADDRS[3], POT_REGS[i], dis_vals[i], mode="block")
+                        set_wiper(POT_ADDRS[3], POT_REGS[i], dis_vals[i])
                     
                     set_GPIO(i, 'ON', EN_DIS_GPIO_LIST)
                     set_GPIO(i, 'HIGH', EN_CURR_GPIO_LIST)
