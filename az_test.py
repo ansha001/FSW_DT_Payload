@@ -41,6 +41,7 @@ DIS_SETPT_DELTA = 2
 SERIAL_PORT = '/dev/ttyUSB0'
 BAUDRATE = 9600
 SYS_TIMEOUT = 0.5
+ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=SYS_TIMEOUT)
 
 file_name = 'ZZ_log_'
 trial = 1
@@ -64,6 +65,7 @@ def init_gpio():
     
 def set_wiper(i2c_address, wiper_register, value):
     #set_wiper(POT1_ADDR, WIPER_0, value, mode="block")
+    print(f"Setting wiper value in {wiper_register} to {value}")
     if value < 0 or value > 256:
         raise ValueError("Wiper value out of range (0-256)")
     command_byte = (wiper_register << 4) | ((value >> 8) & 0x01)  
@@ -71,6 +73,7 @@ def set_wiper(i2c_address, wiper_register, value):
 
     try:
         bus.write_i2c_block_data(i2c_address, command_byte, [lsb])
+        
     except OSError as e:
         print(f"Error setting wiper {wiper_register} on {i2c_address}: {e}")
         return -1
@@ -126,13 +129,13 @@ def read_temperature(TMP_ADDR = 0x48):
 def get_CPU_temperature():
     output = subprocess.check_output(['vcgencmd','measure_temp'])
     temperature = float(output[5:9])
-    print('CPU Temp is ',temperature,'*C')
+    #print('CPU Temp is ',temperature,'*C')
     return temperature
 
 def get_CPU_voltage():
     output = subprocess.check_output(['vcgencmd','measure_volts'])
     voltage = float(output[5:11])
-    print('CPU Voltage is ',voltage,'V')
+    #print('CPU Voltage is ',voltage,'V')
     return voltage
 
 def read_voltage(INA_ADR = 0x40):
@@ -145,14 +148,14 @@ def read_voltage(INA_ADR = 0x40):
 def read_current(INA_ADR = 0x40, state="CHG"):
     if state=="DIS":
         try:
-            ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=SYS_TIMEOUT)
+            #ser.open()
             ser.write('MEAS:CURR?\n'.encode())
             I_ps = ser.readline().decode().strip()
-            ser.close()
-
+            #ser.close()
+            print(I_ps)
             current_from_ps = float(I_ps)
 
-            return abs(current_from_ps)  
+            return abs(current_from_ps)*1000
 
         except Exception as e:
             print(f"Error reading power supply: {e}")
@@ -171,7 +174,7 @@ def read_current(INA_ADR = 0x40, state="CHG"):
         current = shunt_voltage / R_shunt
     return current
         
-def ping_sensors():
+def ping_sensors(state):
     #read all the sensors
     temp0 = read_temperature(TMP_ADDRS[0])
     temp1 = read_temperature(TMP_ADDRS[1])
@@ -181,8 +184,8 @@ def ping_sensors():
     volt1 = read_voltage(INA_ADDRS[1])
     volt2 = 0 # skip until rev 2 of board
     volt_CPU = get_CPU_voltage()
-    curr0 = read_current(INA_ADDRS[0])
-    curr1 = read_current(INA_ADDRS[1])
+    curr0 = read_current(INA_ADDRS[0], state)
+    curr1 = read_current(INA_ADDRS[1], state)
     curr2 = 0 #skip until rev 2 of board
     sensor_data = [temp0,temp1,temp2,temp_CPU,volt0,volt1,volt2,volt_CPU,curr0,curr1,curr2]
     return sensor_data
@@ -192,9 +195,6 @@ def log_sensor_data(time, data):
         writer = csv.writer(f)
         writer.writerow([str(time),str(data[0]),str(data[1]),str(data[2]),str(data[3]),str(data[4]),str(data[5]),str(data[6]),str(data[7]),str(data[8]),str(data[9]),str(data[10])])
     
-def set_gpio_state(pin_list, state):
-    for pin in pin_list:
-        GPIO.output(pin, GPIO.HIGH if state else GPIO.LOW)
 
 def set_GPIO(cell_num, state, GPIO_LIST):
     # manipulate EN_CHG GPIO pins according to cell num and desired state
@@ -202,38 +202,64 @@ def set_GPIO(cell_num, state, GPIO_LIST):
         GPIO.output(GPIO_LIST[cell_num], GPIO.HIGH) #set HIGH
     else:
         GPIO.output(GPIO_LIST[cell_num], GPIO.LOW) #set LOW
-
-def safe_board():
-    set_gpio_state(EN_CHG_GPIO_LIST, False)
-    set_gpio_state(EN_DIS_GPIO_LIST, False)
-    set_gpio_state(EN_CUR_GPIO_LIST, False)
-    for pot in POT_ADDRS:
-        for reg in POT_REGS:
-            set_wiper(pot, reg, 256 if pot != POT_ADDRS[-1] else 0)
-
-def set_gpio_state(pin_list, state):
-    for pin in pin_list:
-        GPIO.output(pin, GPIO.HIGH if state else GPIO.LOW)
+        
+def safe_board(cell = -1):
+    if cell == -1:
+        #set everything to safe settings
+        set_GPIO(0, 'OFF', EN_CHG_GPIO_LIST)
+        set_GPIO(1, 'OFF', EN_CHG_GPIO_LIST)
+        set_GPIO(2, 'OFF', EN_CHG_GPIO_LIST)
+        set_GPIO(0, 'OFF', EN_DIS_GPIO_LIST)
+        set_GPIO(1, 'OFF', EN_DIS_GPIO_LIST)
+        set_GPIO(2, 'OFF', EN_DIS_GPIO_LIST)
+        set_GPIO(0, 'LOW', EN_CUR_GPIO_LIST)
+        set_GPIO(1, 'LOW', EN_CUR_GPIO_LIST)
+        set_GPIO(2, 'LOW', EN_CUR_GPIO_LIST)
+        set_wiper(POT_ADDRS[0], POT_REGS[0], 256)
+        set_wiper(POT_ADDRS[0], POT_REGS[1], 256)
+        set_wiper(POT_ADDRS[0], POT_REGS[2], 256)
+        set_wiper(POT_ADDRS[0], POT_REGS[3], 256)
+        set_wiper(POT_ADDRS[1], POT_REGS[0], 256)
+        set_wiper(POT_ADDRS[1], POT_REGS[1], 256)
+        set_wiper(POT_ADDRS[1], POT_REGS[2], 256)
+        set_wiper(POT_ADDRS[1], POT_REGS[3], 256)
+        set_wiper(POT_ADDRS[2], POT_REGS[0], 256)
+        set_wiper(POT_ADDRS[2], POT_REGS[1], 256)
+        set_wiper(POT_ADDRS[2], POT_REGS[2], 256)
+        set_wiper(POT_ADDRS[2], POT_REGS[3], 256)
+        set_wiper(POT_ADDRS[3], POT_REGS[0], 0)
+        set_wiper(POT_ADDRS[3], POT_REGS[1], 0)
+        set_wiper(POT_ADDRS[3], POT_REGS[2], 0)
+        set_wiper(POT_ADDRS[3], POT_REGS[3], 0)
         print('board safe')
+    else:
+        #set only that channel to safe settings
+        set_GPIO(cell, 'OFF', EN_CHG_GPIO_LIST)
+        set_GPIO(cell, 'OFF', EN_DIS_GPIO_LIST)
+        set_GPIO(cell, 'LOW', EN_CUR_GPIO_LIST)
 
 if __name__ == "__main__":
     #run initial setup
-    init_GPIO()
+    init_gpio()
     safe_board()
+    ser.write('SYST:REM\n'.encode())
+    ser.write('Syst:beep\n'.encode())
+    ser.write('OUTP ON\n'.encode())
     
     #TODO check memory to restart experiment at midpoint
+    cycle_count = [0, 20, 20]
+    cell_mode = ['CYCLE','IDLE','IDLE'] #three possibilities: CYCLE, TEST, IDLE
+    cell_state = ['CHG','REST','REST'] #three possibilities: CHG, DIS, REST
     
     time_init = time.monotonic()
     time_iter = time_init
     time_prev = time_iter
     
-    #check initial state of batteries
-    sensor_data = ping_sensors()
-    log_sensor_data(time_i, sensor_data)
     
-    cycle_count = [0, 20, 20]
-    cell_mode = ['CYCLE','IDLE','IDLE'] #three possibilities: CYCLE, TEST, IDLE
-    cell_state = ['CHG','REST','REST'] #three possibilities: CHG, DIS, REST
+    #check initial state of batteries
+    sensor_data = ping_sensors(cell_state[0])
+    log_sensor_data(time_iter, sensor_data)
+
     
     while True:
         time_iter = time.monotonic()
@@ -247,13 +273,13 @@ if __name__ == "__main__":
                 safe_board(i)
         
         if time_iter > time_prev + DT_LOG:
-            sensor_data = ping_sensors()
-            log_sensor_data(time_i, sensor_data)
+            sensor_data = ping_sensors(cell_state[0])
+            log_sensor_data(time_iter, sensor_data)
             temp_i = sensor_data[0:3]
             volt_i = sensor_data[4:7]
             curr_i = sensor_data[8:11]
             
-            for i in range(3):
+            for i in range(2):
                 # mode logic
                 if cycle_count[i] < 20:
                     cell_mode[i] = 'CYCLE'
@@ -277,7 +303,7 @@ if __name__ == "__main__":
                     cell_mode[i] = 'TEST'
                 
                 # carry out mode and state we are in
-                if cell_mode[i] == 'CYCLE' and cell_state == 'CHG':
+                if cell_mode[i] == 'CYCLE' and cell_state[i]== 'CHG':
                     
                     if temp_i[i] > TEMP_CHG_UPPER:
                         charge_setpoint = CHG_UPPER_SETPT
@@ -294,7 +320,7 @@ if __name__ == "__main__":
                         set_POT(i, chg_vals[i])
                     
                     set_GPIO(i, 'ON', EN_CHG_GPIO_LIST)
-                elif cell_mode[i] == 'CYCLE' and cell_state == 'DIS':
+                elif cell_mode[i] == 'CYCLE' and cell_state[i] == 'DIS':
                     discharge_setpoint = DIS_SETPT
                     
                     if curr_i[i] < discharge_setpoint - DIS_SETPT_DELTA:
@@ -303,9 +329,9 @@ if __name__ == "__main__":
                     elif curr_i[i] > discharge_setpoint + DIS_SETPT_DELTA:
                         dis_vals[i] -= 1
                         set_wiper(POT_ADDRS[3], POT_REGS[i], dis_vals[i])
-                    
                     set_GPIO(i, 'ON', EN_DIS_GPIO_LIST)
-                    set_GPIO(i, 'HIGH', EN_CURR_GPIO_LIST)
+                    set_GPIO(i, 'HIGH', EN_CUR_GPIO_LIST)
+                    print("after seting dis conf")
                     
                 elif cell_mode[i] == 'TEST':
                     # do characterization test things
@@ -318,7 +344,7 @@ if __name__ == "__main__":
                     #print('Idle state')
                     safe_board(i)
                     # TODO manage exiting IDLE mode
-            time_prev = time_i
+            time_prev = time_iter
             print('heartbeat')
     
         
