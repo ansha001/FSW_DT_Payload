@@ -1,5 +1,5 @@
 class battery_channel:
-    def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c, EN_CHG_GPIO, EN_DIS_GPIO, POT_REG):
+    def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c):
         self.channel = channel
         self.state   = state
         self.mode    = mode
@@ -10,64 +10,10 @@ class battery_channel:
         self.time_resting_started_s = -1
         self.chg_val = 9
         self.dis_val = 76
-        self.EN_CHG_GPIO = EN_CHG_GPIO
-        self.EN_DIS_GPIO = EN_DIS_GPIO
-        self.POT_REG     = POT_REG
+        self.en_chg_state = False
+        self.en_dis_state = False
+        self.en_cur_state = False
         
-#     def set_GPIO(cell_num, state, GPIO_LIST):
-#         # manipulate EN_CHG GPIO pins according to cell num and desired state
-#         if state=='ON' or state=='HIGH':
-#             GPIO.output(GPIO_LIST[cell_num], GPIO.HIGH) #set HIGH
-#         else:
-#             GPIO.output(GPIO_LIST[cell_num], GPIO.LOW) #set LOW
-            
-    def set_POT(channel, val, ADDRS):
-        # given "10-bit" potentiometer value
-        # set each wiper in the potentiometer to the corresponding value
-        val = max(0, min(1024, val))
-        a = int(val/4)
-        b = a + (val%4 > 2)
-        c = a + (val%4 > 1)
-        d = a + (val%4 > 0)
-        set_wiper(ADDRS.POT_ADDRS[channel], ADDRS.POT_REGS[0], a, mode="block")
-        set_wiper(ADDRS.POT_ADDRS[channel], ADDRS.POT_REGS[1], b, mode="block")
-        set_wiper(ADDRS.POT_ADDRS[channel], ADDRS.POT_REGS[2], c, mode="block")
-        set_wiper(ADDRS.POT_ADDRS[channel], ADDRS.POT_REGS[3], d, mode="block")
-        
-    def set_wiper(i2c_address, wiper_register, value, mode="byte"):
-        if value < 0 or value > 256:
-            raise ValueError("Wiper value out of range (0-256)")
-
-        command_byte = (wiper_register << 4) | ((value >> 8) & 0x01)  
-        lsb = value & 0xFF  
-
-        try:
-            if mode == "byte":
-                bus.write_byte_data(i2c_address, wiper_register, lsb)
-            elif mode == "block":
-                bus.write_i2c_block_data(i2c_address, command_byte, [lsb])
-            else:
-                raise ValueError("invalid mode")
-        except OSError as e:
-            print(f"Error setting wiper {wiper_register}: {e}")
-            return -1
-    
-    def read_wiper(i2c_address, wiper_register, mode="byte"):
-        try:
-            if mode == "byte":
-                data = bus.read_byte_data(i2c_address, wiper_register)
-                return data
-            elif mode == "block":
-                command_byte = (wiper_register << 4) | (0x03 << 2)  # read command 11
-                data = bus.read_i2c_block_data(i2c_address, command_byte, 2)
-                value = ((data[0] & 0x01) << 8) | data[1]  # combine MSB and LSB for 9bit value
-                return value
-            else:
-                raise ValueError("invalid mode")
-        except OSError as e:
-            print(f"Error reading wiper {wiper_register}: {e}")
-            return -1
-    
     def channel_logic(self, time_iter_s, PARAMS):
         if self.cycle_count < 20:
             self.mode = 'CYCLE'
@@ -87,7 +33,7 @@ class battery_channel:
             self.state = 'CHG_REST'
             #TODO - define RPT logic sequence
     
-    def channel_action(self, PARAMS, ADDRS):
+    def channel_action(self, PARAMS):
         if self.mode == 'CYCLE' and self.state == 'CHG':     
             #determine charging current setpoint
             charge_setpoint_ma = 0
@@ -102,30 +48,38 @@ class battery_channel:
             
             if self.curr_ma < charge_setpoint_ma - PARAMS.CHG_SETPT_DELTA_MA:
                 self.chg_val += 1
-                set_POT(self.channel, self.chg_val, ADDRS)
             elif self.curr_ma > charge_setpoint_ma + PARAMS.CHG_SETPT_DELTA_MA:
                 self.chg_val -= 1
-                set_POT(self.channel, self.chg_val, ADDRS)
             self.chg_val = max(0, min(1024, self.chg_val))
             
             if charge_setpoint_ma < 0:
-                GPIO.output(self.EN_CHG_GPIO, GPIO.HIGH)
+                self.en_chg_state = True
+                self.en_dis_state = False  #this shouldn't be true, but just to be safe
             else:
-                GPIO.output(self.EN_CHG_GPIO, GPIO.LOW)
+                self.en_dis_state = False
                 
-        elif self.mode[i] == 'CYCLE' and self.state == 'DIS':
-            discharge_setpoint = PARAMS.DIS_SETPT
+        elif self.mode == 'CYCLE' and self.state == 'DIS':
+            discharge_setpoint_ma = 0
+            if self.temp_c > PARAMS.TEMP_MIN_C:
+                discharge_setpoint_ma = PARAMS.DIS_SETPT_MA
+            if self.temp_c > PARAMS.TEMP_MAX_C:
+                discharge_setpoint_ma = 0
             
-            if self.curr_ma < discharge_setpoint - PARAMS.DIS_SETPT_DELTA_MA:
+            if self.curr_ma < discharge_setpoint_ma - PARAMS.DIS_SETPT_DELTA_MA:
                 self.dis_val += 1
                 self.dis_val = min(256, self.dis_val)
-                set_wiper(POT_ADDRS[3], self.POT_REG, self.dis_val, mode="block")
-            elif self.curr_ma > discharge_setpoint + PARAMS.DIS_SETPT_DELTA_MA:
+            elif self.curr_ma > discharge_setpoint_ma + PARAMS.DIS_SETPT_DELTA_MA:
                 self.dis_val -= 1
                 self.dis_val = max(0, self.dis_val)
-                set_wiper(POT_ADDRS[3], self.POT_REG, self.dis_val, mode="block")
-            GPIO.output(ADDRS.EN_DIS_GPIO_LIST[self.channel], GPIO.HIGH)
-            GPIO.output(ADDRS.EN_CUR_GPIO_LIST[self.channel], GPIO.HIGH)
+            
+            self.en_cur_state = False
+            if discharge_setpoint_ma > 0:
+                self.en_dis_state = True
+                self.en_chg_state = False
+                if discharge_setpoint_ma > PARAMS.DIS_TRANS_MA:  # TODO revisit transition value
+                    self.en_cur_state = True
+            else:
+                self.en_dis_state = False
             
         elif self.mode == 'TEST':
             # do characterization test things
@@ -133,4 +87,4 @@ class battery_channel:
             self.cycle_count = 0
             self.mode = 'CYCLE'
             self.state = 'CHG'
-            safe_board(self.channel)
+            #safe_board(self.channel)

@@ -22,8 +22,10 @@ class FSW_PARAMS:
                     CHG_SETPT_DELTA_MA = 0.5,   # if charging current is outside bound, increment potentiometer
                     DIS_SETPT_MA = 40,          # discharge setpoint
                     DIS_SETPT_DELTA_MA = 0.5,   # if discharing current is outside bound, increment ptentiometer
+                    DIS_TRANS_MA = 10,          # current level to transition between high and low current mode
                     CHG_VAL_INIT = 9,
-                    DIS_VAL_INIT = 76):
+                    DIS_VAL_INIT = 76,
+                    R_SHUNT_OHMS = [1.0, 1.0, 1.0]):
         self.DT_LOG_S = DT_LOG_S
         self.DT_HEAT_S = DT_HEAT_S
         self.DT_FAST_S = DT_FAST_S
@@ -47,4 +49,5 @@ class FSW_PARAMS:
         self.DIS_SETPT_DELTA_MA = DIS_SETPT_DELTA_MA
         self.CHG_VAL_INIT = CHG_VAL_INIT
         self.DIS_VAL_INIT = DIS_VAL_INIT
+        self.R_SHUNT_OHMS = R_SHUNT_OHMS
         
