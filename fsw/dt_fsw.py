@@ -15,15 +15,10 @@ from battery_channel_class import battery_channel
 from FSW_PARAMS_class import FSW_PARAMS
 from FSW_ADDRS_class import FSW_ADDRS
 
-# I2C addresses
-ADDRS = FSW_ADDRS(INA_ADDRS = [0x40, 0x41, 0x43], #INA 0,1,2
-                  TMP_ADDRS = [0x48, 0x49, 0x4B], #TMP 0,1,2
-                  POT_ADDRS = [0x2C, 0x2E, 0x2D, 0x2F], #POT 0,1,2,3
-                  POT_REGS  = [0x00, 0x01, 0x06, 0x07],
-                  EN_CHG_GPIO_LIST = [23,24,25], #GPIO 23,24,25 is physical pins 16,18,22
-                  EN_DIS_GPIO_LIST = [ 5, 6,13], #GPIO  5, 6,13 is physical pins 29,31,33
-                  EN_CUR_GPIO_LIST = [12,16,26], #GPIO 12,16,26 is physical pins 32,36,37
-                  EN_HEATER_GPIO   = 18)         #GPIO 18 is physical pin 12
+# load addresses
+ADDRS = FSW_ADDRS()
+# load params
+PARAMS = FSW_PARAMS()
 
 bus = smbus2.SMBus(1)
 
@@ -36,33 +31,6 @@ header = ['Time (s)','Temp0','Temp1','Temp2','Temp_CPU','Volt0','Volt1','Volt2',
 with open(file_name, 'w', encoding='UTF8', newline='') as f:
     writer = csv.writer(f)
     writer.writerow(header)
-    
-# set parameters TODO read this from a json file or similar
-PARAMS = FSW_PARAMS(DT_LOG_S  = 5,              # time step between logs
-                    DT_HEAT_S = 60,             # time step between checking heater
-                    DT_FAST_S = 1,              # time step between fast loop of EKF
-                    DT_SLOW_S = 1000,           # time step between slow loop of EKF
-                    CHG_LIMIT_V = 4.0,          # voltage to stop charging
-                    DIS_LIMIT_V = 3.2,          # voltage to stop discharging
-                    TIME_TO_REST_S = 300,       # time to rest between charge/discharge, seconds
-                    TEMP_MAX_C =  65,           # above this, go to safe mode
-                    TEMP_MIN_C = -10,           # below this, go to safe mode
-                    TEMP_HEATER_ON_C  = 10,     # below this, turn heater on
-                    TEMP_HEATER_OFF_C = 25,     # above this, turn heater off
-                    TEMP_CHG_MAX_C   = 60,      # above this, stop charging
-                    TEMP_CHG_UPPER_C = 15,      # above this, charge setpoint is -40 mA
-                    TEMP_CHG_LOWER_C = 5,       # above this, charge setpoint is -10 mA
-                    TEMP_CHG_MIN_C   = 0,       # below this, stop charging
-                    CHG_UPPER_SETPT_MA = -40,   # nominal setpoint
-                    CHG_LOWER_SETPT_MA = -10,   # cold setpoint
-                    CHG_MIN_SETPT_MA   = -8,    # minimum setpoint
-                    CHG_SETPT_DELTA_MA = 0.5,   # if charging current is outside bound, increment potentiometer
-                    DIS_SETPT_MA = 40,          # discharge setpoint
-                    DIS_SETPT_DELTA_MA = 0.5,
-                    DIS_TRANS_MA = 10,
-                    CHG_VAL_INIT = 9,
-                    DIS_VAL_INIT = 76,
-                    R_SHUNT_OHMS = [1.0, 1.0, 1.0])
 
 def init_GPIO():
     GPIO.setmode(GPIO.BCM)
@@ -76,9 +44,9 @@ def init_GPIO():
     GPIO.setup(ADDRS.EN_CUR_GPIO_LIST[1], GPIO.OUT)
     GPIO.setup(ADDRS.EN_CUR_GPIO_LIST[2], GPIO.OUT)
     GPIO.setup(ADDRS.EN_HEATER_GPIO, GPIO.OUT)
-    GPIO.output(ADDRS.EN_CHG_GPIO_LIST[0], GPIO.LOW)  #set to LOW
-    GPIO.output(ADDRS.EN_CHG_GPIO_LIST[1], GPIO.LOW)  #set to LOW
-    GPIO.output(ADDRS.EN_CHG_GPIO_LIST[2], GPIO.LOW)  #set to LOW
+    GPIO.output(ADDRS.EN_CHG_GPIO_LIST[0], GPIO.HIGH)  #set to LOW, inverted
+    GPIO.output(ADDRS.EN_CHG_GPIO_LIST[1], GPIO.HIGH)  #set to LOW, inverted
+    GPIO.output(ADDRS.EN_CHG_GPIO_LIST[2], GPIO.HIGH)  #set to LOW, inverted
     GPIO.output(ADDRS.EN_DIS_GPIO_LIST[0], GPIO.LOW)  #set to LOW
     GPIO.output(ADDRS.EN_DIS_GPIO_LIST[1], GPIO.LOW)  #set to LOW
     GPIO.output(ADDRS.EN_DIS_GPIO_LIST[2], GPIO.LOW)  #set to LOW
@@ -181,8 +149,15 @@ def read_current(channel):
     #R_SHUNT_OHMS = 1 #Ohm
     shunt_voltage_raw = bus.read_word_data(ADDRS.INA_ADDRS[channel], 0x01)  #should return 16-bit two's complement
     shunt_voltage_raw = ((shunt_voltage_raw << 8) & 0xFF00) | (shunt_voltage_raw >> 8)
-    shunt_voltage_v = shunt_voltage_raw * 2.5  # in V
-    current_ma = shunt_voltage_v / PARAMS.R_SHUNT_OHMS[channel]
+    
+    #apply two's complement correction if negative
+    # & with 100000000000000 to check if msb is 1 or 0
+    if shunt_voltage_raw & (1 << 15):
+        shunt_voltage_raw -= (1 << 16)
+        
+    shunt_voltage_uv = shunt_voltage_raw * 2.5  # in uV
+    current_ua = shunt_voltage_uv / PARAMS.R_SHUNT_OHMS[channel]
+    current_ma = current_ua / 1000.0
     return current_ma
         
 def ping_sensors(ch0, ch1, ch2):
@@ -218,25 +193,27 @@ def log_sensor_data(time_s, data):
 def update_actuators(ch):
     #set GPIO first
     if ch.en_dis_state:
-        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[ch.channel], GPIO.LOW)
+        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[ch.channel], GPIO.HIGH) #inverted
         GPIO.output(ADDRS.EN_DIS_GPIO_LIST[ch.channel], GPIO.HIGH)
         if ch.en_cur_state:
-            GPIO.output(ADDRS.EN_CUR_GPIO_LIST[ch.channel], GPIO.HIGH)
+            GPIO.output(ADDRS.EN_CUR_GPIO_LIST[ch.channel], GPIO.HIGH) 
         else:
-            GPIO.output(ADDRS.EN_CUR_GPIO_LIST[ch.channel], GPIO.LOW)
+            GPIO.output(ADDRS.EN_CUR_GPIO_LIST[ch.channel], GPIO.LOW) 
     elif ch.en_chg_state:
         GPIO.output(ADDRS.EN_DIS_GPIO_LIST[ch.channel], GPIO.LOW)
         GPIO.output(ADDRS.EN_CUR_GPIO_LIST[ch.channel], GPIO.LOW)
-        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[ch.channel], GPIO.HIGH)
+        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[ch.channel], GPIO.LOW) #inverted
     else:
         GPIO.output(ADDRS.EN_DIS_GPIO_LIST[ch.channel], GPIO.LOW)
         GPIO.output(ADDRS.EN_CUR_GPIO_LIST[ch.channel], GPIO.LOW)
-        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[ch.channel], GPIO.LOW)
+        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[ch.channel], GPIO.HIGH) #inverted
     
     #set potentiometers
     set_POT(ch.channel, ch.chg_val)                                       # for charging
-    set_wiper(ADDRS.POT_ADDRS[3], ADDRS.POT_REGS[ch.channel], ch.dis_val, mode="block") # for discharging
-    
+    if ch.channel < 0.5:
+        set_wiper(ADDRS.POT_ADDRS[3], ADDRS.POT_REGS[ch.channel], ch.dis_val, mode="block") # for discharging
+    else:
+        set_wiper(ADDRS.POT_ADDRS[3], ADDRS.POT_REGS[ch.channel+1], ch.dis_val, mode="block") # for discharging. Ch1 and Ch2 are on register 2 and 3 
 
 def check_for_safety(temp_data_c):
     for i in range(3):
@@ -246,9 +223,9 @@ def check_for_safety(temp_data_c):
 def safe_board(cell = -1):
     if cell == -1:
         #set everything to safe settings
-        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[0], GPIO.LOW)
-        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[1], GPIO.LOW)
-        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[2], GPIO.LOW)
+        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[0], GPIO.HIGH) #inverted
+        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[1], GPIO.HIGH) #inverted
+        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[2], GPIO.HIGH) #inverted
         GPIO.output(ADDRS.EN_DIS_GPIO_LIST[0], GPIO.LOW)
         GPIO.output(ADDRS.EN_DIS_GPIO_LIST[1], GPIO.LOW)
         GPIO.output(ADDRS.EN_DIS_GPIO_LIST[2], GPIO.LOW)
@@ -275,7 +252,7 @@ def safe_board(cell = -1):
         print('board safe')
     else:
         #set only that channel to safe settings
-        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[cell], GPIO.LOW)
+        GPIO.output(ADDRS.EN_CHG_GPIO_LIST[cell], GPIO.HIGH) #inverted
         GPIO.output(ADDRS.EN_DIS_GPIO_LIST[cell], GPIO.LOW)
         GPIO.output(ADDRS.EN_CUR_GPIO_LIST[cell], GPIO.LOW)
 
@@ -294,69 +271,81 @@ if __name__ == "__main__":
     time_prev_slow_s = time_iter_s
     
     #create battery channel objects
-    ch0 = battery_channel(channel=0, state='CHG', mode='CYCLE', cycle_count=0,
-                          volt_v=read_voltage(0), temp_c=read_temperature(0))
-    ch1 = battery_channel(channel=1, state='CHG', mode='CYCLE', cycle_count=0,
-                          volt_v=read_voltage(1), temp_c=read_temperature(1))
-    ch2 = battery_channel(channel=2, state='CHG', mode='CYCLE', cycle_count=0,
-                          volt_v=read_voltage(2), temp_c=read_temperature(2))
+    ch0 = battery_channel(channel=0,state='DIS',mode='CYCLE',cycle_count=0,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
+    ch1 = battery_channel(channel=1,state='DIS',mode='CYCLE',cycle_count=0,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT) 
+    ch2 = battery_channel(channel=2,state='DIS',mode='CYCLE',cycle_count=0,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
     
     #check initial state of batteries
     sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
     log_sensor_data(time_iter_s, sensor_data)
     
-    while True:
-        time_iter_s = time.monotonic()
-        #grab the latest sensor measurements - helpful for some things, debugging
-        temp_iter_c  = sensor_data[0:3]
-        volt_iter_v  = sensor_data[4:7]
-        curr_iter_ma = sensor_data[8:11]
+    try:
+        while True:
+            time_iter_s = time.monotonic()
+            #grab the latest sensor measurements - helpful for some things, debugging
+            temp_iter_c  = sensor_data[0:3]
+            volt_iter_v  = sensor_data[4:7]
+            curr_iter_ma = sensor_data[8:11]
 
-        # check safe temperatures, TODO - other checks
-        check_for_safety(temp_iter_c)
-        
-        if time_iter_s > time_prev_log_s + PARAMS.DT_LOG_S:
-            #do logging things
-            #TODO write to memory to prepare for reset
-            log_sensor_data(time_iter_s, sensor_data)
-            #print('heartbeat, logging')
-            print('Tempera: %5.2f, %5.2f, %5.2f' % (temp_iter_c[0], temp_iter_c[1], temp_iter_c[2]))
-            print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
-            print('Current: %5.2f, %5.2f, %5.2f' % (curr_iter_ma[0], curr_iter_ma[1], curr_iter_ma[2]))
-            time_prev_log_s = time_iter_s
+            # check safe temperatures, TODO - other checks
+            check_for_safety(temp_iter_c)
             
-        if time_iter_s > time_prev_fast_s + PARAMS.DT_FAST_S:
-            sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
-            
-            #check mode and state, update if necessary
-            ch0.channel_logic(time_iter_s, PARAMS)
-            ch1.channel_logic(time_iter_s, PARAMS)
-            ch2.channel_logic(time_iter_s, PARAMS)
+            if time_iter_s > time_prev_log_s + PARAMS.DT_LOG_S:
+                #do logging things
+                #TODO write to memory to prepare for reset
+                log_sensor_data(time_iter_s, sensor_data)
+                #print('heartbeat, logging')
+                print('Tempera: %5.2f, %5.2f, %5.2f' % (temp_iter_c[0], temp_iter_c[1], temp_iter_c[2]))
+                print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
+                print('Current: %5.2f, %5.2f, %5.2f' % (curr_iter_ma[0], curr_iter_ma[1], curr_iter_ma[2]))
+                print('dis_val: %5.2f, %5.2f, %5.2f' % (ch0.dis_val, ch1.dis_val, ch2.dis_val))
+                print('chg_val: %5.2f, %5.2f, %5.2f' % (ch0.chg_val, ch1.chg_val, ch2.chg_val))
+                print('ch_stat:'+ch0.state+','+ch1.state+','+ch2.state)
+                time_prev_log_s = time_iter_s
                 
-            #update actuator values for each channel
-            ch0.channel_action(PARAMS)
-            ch1.channel_action(PARAMS)
-            ch2.channel_action(PARAMS)
-            
-            #push those actuator values to the board
-            #update_actuators(ch0)
-            #update_actuators(ch1)
-            #update_actuators(ch2)
-            
-            #print('heartbeat, fast loop')
-            time_prev_fast_s = time_iter_s
-            
-        if time_iter_s > time_prev_slow_s + PARAMS.DT_SLOW_S:
-            #do slow loop EKF things
-            print('heartbeat, slow EKF')
-            time_prev_slow_s = time_iter_s
+            if time_iter_s > time_prev_fast_s + PARAMS.DT_FAST_S:
+                sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
+                
+                #check mode and state, update if necessary
+                ch0.channel_logic(time_iter_s, PARAMS)
+                ch1.channel_logic(time_iter_s, PARAMS)
+                ch2.channel_logic(time_iter_s, PARAMS)
+                  
+                #overwrite logic for testing  
+                  
+                #update actuator values for each channel
+                ch0.channel_action(PARAMS)
+                ch1.channel_action(PARAMS)
+                ch2.channel_action(PARAMS)
+                
+                #overwrite if desired for testing
+                
+                #push those actuator values to the board
+                update_actuators(ch0)
+                update_actuators(ch1)
+                update_actuators(ch2)
+                
+                #fast loop EKF things, state estimator
+                
+                #print('heartbeat, fast loop')
+                time_prev_fast_s = time_iter_s
+                
+            if time_iter_s > time_prev_slow_s + PARAMS.DT_SLOW_S:
+                #do slow loop EKF things
+                print('heartbeat, slow EKF')
+                time_prev_slow_s = time_iter_s
 
-        if time_iter_s > time_prev_heat_s + PARAMS.DT_HEAT_S:
-            #check if heater should be on
-            if statistics.median(temp_iter_c) < PARAMS.TEMP_HEATER_ON_C:
-                GPIO.output(ADDRS.EN_HEATER_GPIO, GPIO.HIGH)
-            elif statistics.median(temp_iter_c) > PARAMS.TEMP_HEATER_OFF_C:
-                GPIO.output(ADDRS.EN_HEATER_GPIO, GPIO.LOW)
-            
-            print('heartbeat, heater')
-            time_prev_heat_s = time_iter_s
+            if time_iter_s > time_prev_heat_s + PARAMS.DT_HEAT_S:
+                #check if heater should be on
+                if statistics.median(temp_iter_c) < PARAMS.TEMP_HEATER_ON_C:
+                    GPIO.output(ADDRS.EN_HEATER_GPIO, GPIO.HIGH)
+                elif statistics.median(temp_iter_c) > PARAMS.TEMP_HEATER_OFF_C:
+                    GPIO.output(ADDRS.EN_HEATER_GPIO, GPIO.LOW)
+                
+                print('heartbeat, heater')
+                time_prev_heat_s = time_iter_s
+    
+    except (KeyboardInterrupt):
+        print('stopping test')
+        safe_board()
+        

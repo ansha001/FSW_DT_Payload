@@ -1,15 +1,16 @@
 class battery_channel:
-    def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c):
+    def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c, chg_val, dis_val):
         self.channel = channel
         self.state   = state
+        self.state_prev = state
         self.mode    = mode
         self.volt_v  = volt_v
         self.temp_c  = temp_c
         self.curr_ma = 0
         self.cycle_count = cycle_count
         self.time_resting_started_s = -1
-        self.chg_val = 9
-        self.dis_val = 76
+        self.chg_val = chg_val
+        self.dis_val = dis_val
         self.en_chg_state = False
         self.en_dis_state = False
         self.en_cur_state = False
@@ -34,6 +35,9 @@ class battery_channel:
             #TODO - define RPT logic sequence
     
     def channel_action(self, PARAMS):
+        charge_setpoint_ma = 0
+        discharge_setpoint_ma = 0
+        
         if self.mode == 'CYCLE' and self.state == 'CHG':     
             #determine charging current setpoint
             charge_setpoint_ma = 0
@@ -51,14 +55,8 @@ class battery_channel:
             elif self.curr_ma > charge_setpoint_ma + PARAMS.CHG_SETPT_DELTA_MA:
                 self.chg_val -= 1
             self.chg_val = max(0, min(1024, self.chg_val))
-            
-            if charge_setpoint_ma < 0:
-                self.en_chg_state = True
-                self.en_dis_state = False  #this shouldn't be true, but just to be safe
-            else:
-                self.en_dis_state = False
                 
-        elif self.mode == 'CYCLE' and self.state == 'DIS':
+        if self.mode == 'CYCLE' and self.state == 'DIS':
             discharge_setpoint_ma = 0
             if self.temp_c > PARAMS.TEMP_MIN_C:
                 discharge_setpoint_ma = PARAMS.DIS_SETPT_MA
@@ -71,20 +69,21 @@ class battery_channel:
             elif self.curr_ma > discharge_setpoint_ma + PARAMS.DIS_SETPT_DELTA_MA:
                 self.dis_val -= 1
                 self.dis_val = max(0, self.dis_val)
-            
-            self.en_cur_state = False
-            if discharge_setpoint_ma > 0:
-                self.en_dis_state = True
-                self.en_chg_state = False
-                if discharge_setpoint_ma > PARAMS.DIS_TRANS_MA:  # TODO revisit transition value
-                    self.en_cur_state = True
-            else:
-                self.en_dis_state = False
-            
-        elif self.mode == 'TEST':
+                
+        if self.mode == 'TEST':
             # do characterization test things
             #TODO implement characterization test
             self.cycle_count = 0
             self.mode = 'CYCLE'
             self.state = 'CHG'
             #safe_board(self.channel)
+        
+        self.en_cur_state = False
+        self.en_dis_state = False
+        self.en_chg_state = False
+        if discharge_setpoint_ma > 0:
+            self.en_dis_state = True
+            if discharge_setpoint_ma > PARAMS.DIS_TRANS_MA:  # TODO revisit transition value
+                self.en_cur_state = True
+        if charge_setpoint_ma < 0:
+            self.en_chg_state = True
