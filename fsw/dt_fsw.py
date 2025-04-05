@@ -326,12 +326,19 @@ if __name__ == "__main__":
                 update_actuators(ch2)
                 
                 #fast loop EKF things, state estimator
+                ch0.soc = ch0.state_estimator_fast(volt_iter_v[0], curr_iter_ma[0])
+                ch1.soc = ch1.state_estimator_fast(volt_iter_v[1], curr_iter_ma[1])
+                ch2.soc = ch2.state_estimator_fast(volt_iter_v[2], curr_iter_ma[2])
                 
                 #print('heartbeat, fast loop')
                 time_prev_fast_s = time_iter_s
                 
             if time_iter_s > time_prev_slow_s + PARAMS.DT_SLOW_S:
                 #do slow loop EKF things
+                ch0.soc = ch0.state_estimator_slow(volt_iter_v[0], curr_iter_ma[0])
+                ch1.soc = ch1.state_estimator_slow(volt_iter_v[1], curr_iter_ma[1])
+                ch2.soc = ch2.state_estimator_slow(volt_iter_v[2], curr_iter_ma[2])
+                
                 print('heartbeat, slow EKF')
                 time_prev_slow_s = time_iter_s
 

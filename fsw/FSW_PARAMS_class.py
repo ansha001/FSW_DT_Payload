@@ -5,9 +5,12 @@ class FSW_PARAMS:
         self.DT_HEAT_S = 60             # time step between checking heater
         self.DT_FAST_S = 1              # time step between fast loop of EKF
         self.DT_SLOW_S = 1000           # time step between slow loop of EKF
-        self.CHG_LIMIT_V = 4.0          # voltage to stop charging
-        self.DIS_LIMIT_V = 3.6          # voltage to stop discharging
-        self.TIME_TO_REST_S = 30        # time to rest between charge/discharge, seconds
+        self.CHG_LIMIT_V = 4.2          # voltage to stop charging
+        self.DIS_LIMIT_V = 2.75         # voltage to stop discharging
+        self.TIME_CYCLE_REST_S = 120    # time to rest between charge/discharge cycles, seconds
+        self.TIME_PULSE_REST_S = 600    # time to rest after pulse tests, seconds
+        self.TIME_PULSE_TEST_S = 10     # time to hold current during pulse tests, seconds
+        self.TIME_TEST_REST_S = 1800    # time to rest before and after char test, seconds
         self.TEMP_MAX_C =  65           # above this, go to safe mode
         self.TEMP_MIN_C = -10           # below this, go to safe mode
         self.TEMP_HEATER_ON_C  = 10     # below this, turn heater on
@@ -26,6 +29,7 @@ class FSW_PARAMS:
         self.CHG_VAL_INIT = 9
         self.DIS_VAL_INIT = 120
         self.R_SHUNT_OHMS = [1.0, 1.0, 1.0]
+        self.NUM_CYCLES_PER_TEST = 2000
         
     def update_params():
         #TODO if we need to update the params in flight, this should write to the json file

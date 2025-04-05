@@ -11,12 +11,16 @@ class battery_channel:
         self.time_resting_started_s = -1
         self.chg_val = chg_val
         self.dis_val = dis_val
+        self.dis_val_low = dis_val
         self.en_chg_state = False
         self.en_dis_state = False
         self.en_cur_state = False
+        self.est_soc = 0
+        self.est_volt_v = 0
+        #TODO - add other state estimate variables
         
     def channel_logic(self, time_iter_s, PARAMS):
-        if self.cycle_count < 20:
+        if self.cycle_count < PARAMS.NUM_CYCLES_PER_TEST:
             self.mode = 'CYCLE'
             if self.state == 'CHG' and self.volt_v >= PARAMS.CHG_LIMIT_V:
                 self.state = 'CHG_REST'
@@ -24,9 +28,9 @@ class battery_channel:
             if self.state == 'DIS' and self.volt_v <= PARAMS.DIS_LIMIT_V:
                 self.state = 'DIS_REST'
                 self.time_resting_started_s = time_iter_s
-            if self.state == 'CHG_REST' and time_iter_s - self.time_resting_started_s > PARAMS.TIME_TO_REST_S:
+            if self.state == 'CHG_REST' and time_iter_s - self.time_resting_started_s > PARAMS.TIME_CYCLE_REST_S:
                 self.state = 'DIS'
-            if self.state == 'DIS_REST' and time_iter_s - self.time_resting_started_s > PARAMS.TIME_TO_REST_S:
+            if self.state == 'DIS_REST' and time_iter_s - self.time_resting_started_s > PARAMS.TIME_CYCLE_REST_S:
                 self.state = 'CHG'
                 self.cycle_count += 1
         else:
@@ -87,3 +91,11 @@ class battery_channel:
                 self.en_cur_state = True
         if charge_setpoint_ma < 0:
             self.en_chg_state = True
+            
+    def state_estimate_fast(self, meas_volt_v, meas_curr_ma):
+        #TODO implement state estimator
+        return 0
+    
+    def state_estimate_slow(self, meas_volt_v, meas_curr_ma):
+        #TODO imlpement state estimator
+        return 0
