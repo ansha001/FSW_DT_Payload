@@ -220,6 +220,9 @@ def check_for_safety(temp_data_c):
             if temp_data_c[i] > PARAMS.TEMP_MAX_C or temp_data_c[i] < PARAMS.TEMP_MIN_C:
                 safe_board(i)
 
+def check_for_data_request():
+    return 
+
 def safe_board(cell = -1):
     if cell == -1:
         #set everything to safe settings
@@ -269,6 +272,7 @@ if __name__ == "__main__":
     time_prev_heat_s = time_iter_s
     time_prev_fast_s = time_iter_s
     time_prev_slow_s = time_iter_s
+    time_prev_sensors_s = time_iter_s
     
     #create battery channel objects
     ch0 = battery_channel(channel=0,state='DIS',mode='CYCLE',cycle_count=0,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
@@ -278,33 +282,27 @@ if __name__ == "__main__":
     #check initial state of batteries
     sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
     log_sensor_data(time_iter_s, sensor_data)
+    temp_iter_c  = sensor_data[0:3]
+    volt_iter_v  = sensor_data[4:7]
+    curr_iter_ma = sensor_data[8:11]
     
     try:
         while True:
             time_iter_s = time.monotonic()
-            #grab the latest sensor measurements - helpful for some things, debugging
-            temp_iter_c  = sensor_data[0:3]
-            volt_iter_v  = sensor_data[4:7]
-            curr_iter_ma = sensor_data[8:11]
 
             # check safe temperatures, TODO - other checks
-            check_for_safety(temp_iter_c)
+            if time_iter_s > time_prev_check_s + PARAMS.DT_CHECK_S:
+                check_for_safety(temp_iter_c)
+                check_for_data_request()
+                time_prev_check_s = time_iter_s
             
-            if time_iter_s > time_prev_log_s + PARAMS.DT_LOG_S:
-                #do logging things
-                #TODO write to memory to prepare for reset
-                log_sensor_data(time_iter_s, sensor_data)
-                #print('heartbeat, logging')
-                print('Tempera: %5.2f, %5.2f, %5.2f' % (temp_iter_c[0], temp_iter_c[1], temp_iter_c[2]))
-                print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
-                print('Current: %5.2f, %5.2f, %5.2f' % (curr_iter_ma[0], curr_iter_ma[1], curr_iter_ma[2]))
-                print('dis_val: %5.2f, %5.2f, %5.2f' % (ch0.dis_val, ch1.dis_val, ch2.dis_val))
-                print('chg_val: %5.2f, %5.2f, %5.2f' % (ch0.chg_val, ch1.chg_val, ch2.chg_val))
-                print('ch_stat:'+ch0.state+','+ch1.state+','+ch2.state)
-                time_prev_log_s = time_iter_s
-                
-            if time_iter_s > time_prev_fast_s + PARAMS.DT_FAST_S:
+            if time_iter_s > time_prev_sensors_s + PARAMS.DT_SENSORS_S:
                 sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
+                #grab the latest sensor measurements - helpful for some things, debugging
+                temp_iter_c  = sensor_data[0:3]
+                volt_iter_v  = sensor_data[4:7]
+                curr_iter_ma = sensor_data[8:11]
+                time_prev_sensors_s = time_iter_s
                 
                 #check mode and state, update if necessary
                 ch0.channel_logic(time_iter_s, PARAMS)
@@ -324,20 +322,37 @@ if __name__ == "__main__":
                 update_actuators(ch0)
                 update_actuators(ch1)
                 update_actuators(ch2)
+            
+            if time_iter_s > time_prev_log_s + PARAMS.DT_LOG_S:
+                #do logging things
+                #TODO write to memory to prepare for reset
+                log_sensor_data(time_iter_s, sensor_data)
                 
+                print('Tempera: %5.2f, %5.2f, %5.2f' % (temp_iter_c[0], temp_iter_c[1], temp_iter_c[2]))
+                print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
+                print('Current: %5.2f, %5.2f, %5.2f' % (curr_iter_ma[0], curr_iter_ma[1], curr_iter_ma[2]))
+                print('dis_val: %5.2f, %5.2f, %5.2f' % (ch0.dis_val, ch1.dis_val, ch2.dis_val))
+                print('chg_val: %5.2f, %5.2f, %5.2f' % (ch0.chg_val, ch1.chg_val, ch2.chg_val))
+                print('ch_stat:'+ch0.state+','+ch1.state+','+ch2.state)
+                time_prev_log_s = time_iter_s
+                
+            if time_iter_s > time_prev_fast_s + PARAMS.DT_FAST_S:
                 #fast loop EKF things, state estimator
-                ch0.soc = ch0.state_estimator_fast(volt_iter_v[0], curr_iter_ma[0])
-                ch1.soc = ch1.state_estimator_fast(volt_iter_v[1], curr_iter_ma[1])
-                ch2.soc = ch2.state_estimator_fast(volt_iter_v[2], curr_iter_ma[2])
+                if ch0.mode == 'CYCLE':
+                    ch0.state_estimator_fast(volt_iter_v[0], curr_iter_ma[0])
+                if ch1.mode == 'CYCLE':
+                    ch1.state_estimator_fast(volt_iter_v[1], curr_iter_ma[1])
+                if ch2.mode == 'CYCLE':
+                    ch2.state_estimator_fast(volt_iter_v[2], curr_iter_ma[2])
                 
                 #print('heartbeat, fast loop')
                 time_prev_fast_s = time_iter_s
                 
             if time_iter_s > time_prev_slow_s + PARAMS.DT_SLOW_S:
                 #do slow loop EKF things
-                ch0.soc = ch0.state_estimator_slow(volt_iter_v[0], curr_iter_ma[0])
-                ch1.soc = ch1.state_estimator_slow(volt_iter_v[1], curr_iter_ma[1])
-                ch2.soc = ch2.state_estimator_slow(volt_iter_v[2], curr_iter_ma[2])
+                ch0.state_estimator_slow(volt_iter_v[0], curr_iter_ma[0])
+                ch1.state_estimator_slow(volt_iter_v[1], curr_iter_ma[1])
+                ch2.state_estimator_slow(volt_iter_v[2], curr_iter_ma[2])
                 
                 print('heartbeat, slow EKF')
                 time_prev_slow_s = time_iter_s
@@ -349,7 +364,7 @@ if __name__ == "__main__":
                 elif statistics.median(temp_iter_c) > PARAMS.TEMP_HEATER_OFF_C:
                     GPIO.output(ADDRS.EN_HEATER_GPIO, GPIO.LOW)
                 
-                print('heartbeat, heater')
+                #print('heartbeat, heater')
                 time_prev_heat_s = time_iter_s
     
     except (KeyboardInterrupt):
