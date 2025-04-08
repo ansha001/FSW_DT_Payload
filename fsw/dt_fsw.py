@@ -273,11 +273,12 @@ if __name__ == "__main__":
     time_prev_fast_s = time_iter_s
     time_prev_slow_s = time_iter_s
     time_prev_sensors_s = time_iter_s
+    time_prev_check_s = time_iter_s
     
     #create battery channel objects
-    ch0 = battery_channel(channel=0,state='DIS',mode='CYCLE',cycle_count=0,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
-    ch1 = battery_channel(channel=1,state='DIS',mode='CYCLE',cycle_count=0,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT) 
-    ch2 = battery_channel(channel=2,state='DIS',mode='CYCLE',cycle_count=0,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
+    ch0 = battery_channel(channel=0,state='CHG',mode='CYCLE',cycle_count=1,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
+    ch1 = battery_channel(channel=1,state='CHG',mode='CYCLE',cycle_count=1,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT) 
+    ch2 = battery_channel(channel=2,state='CHG',mode='CYCLE',cycle_count=1,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
     
     #check initial state of batteries
     sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
@@ -334,25 +335,27 @@ if __name__ == "__main__":
                 print('dis_val: %5.2f, %5.2f, %5.2f' % (ch0.dis_val, ch1.dis_val, ch2.dis_val))
                 print('chg_val: %5.2f, %5.2f, %5.2f' % (ch0.chg_val, ch1.chg_val, ch2.chg_val))
                 print('ch_stat:'+ch0.state+','+ch1.state+','+ch2.state)
+                print('Test_sq: %3.1f, %3.1f, %3.1f' % (ch0.test_sequence, ch1.test_sequence, ch2.test_sequence))
                 time_prev_log_s = time_iter_s
                 
             if time_iter_s > time_prev_fast_s + PARAMS.DT_FAST_S:
                 #fast loop EKF things, state estimator
                 if ch0.mode == 'CYCLE':
-                    ch0.state_estimator_fast(volt_iter_v[0], curr_iter_ma[0])
+                    ch0.state_estimate_fast(volt_iter_v[0], curr_iter_ma[0])
                 if ch1.mode == 'CYCLE':
-                    ch1.state_estimator_fast(volt_iter_v[1], curr_iter_ma[1])
+                    ch1.state_estimate_fast(volt_iter_v[1], curr_iter_ma[1])
                 if ch2.mode == 'CYCLE':
-                    ch2.state_estimator_fast(volt_iter_v[2], curr_iter_ma[2])
+                    ch2.state_estimate_fast(volt_iter_v[2], curr_iter_ma[2])
                 
                 #print('heartbeat, fast loop')
                 time_prev_fast_s = time_iter_s
                 
             if time_iter_s > time_prev_slow_s + PARAMS.DT_SLOW_S:
+                #TODO - this might be a problem with shielding the slow EKF during RPT?
                 #do slow loop EKF things
-                ch0.state_estimator_slow(volt_iter_v[0], curr_iter_ma[0])
-                ch1.state_estimator_slow(volt_iter_v[1], curr_iter_ma[1])
-                ch2.state_estimator_slow(volt_iter_v[2], curr_iter_ma[2])
+                ch0.state_estimate_slow(volt_iter_v[0], curr_iter_ma[0])
+                ch1.state_estimate_slow(volt_iter_v[1], curr_iter_ma[1])
+                ch2.state_estimate_slow(volt_iter_v[2], curr_iter_ma[2])
                 
                 print('heartbeat, slow EKF')
                 time_prev_slow_s = time_iter_s

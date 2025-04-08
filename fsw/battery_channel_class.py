@@ -84,7 +84,7 @@ class battery_channel:
             if self.test_sequence == 8 and self.cc_soc_mas >= PARAMS.SOC_PULSE1 * self.cc_capacity_mas and self.volt_v >= PARAMS.FB_PULSE1_V:
                 self.cc_soc_mas = self.cc_soc_mas - self.curr_mas * (time_iter_s - self.time_prev_s)
                 self.time_prev_s = time_iter_s
-            if self.test_sequence == 8 and (self.cc_soc_mas < PARAMS.SOC_PULSE1 * self.cc_capcacity_mas or self.volt_v < PARAMS.FB_PULSE1_V):
+            if self.test_sequence == 8 and (self.cc_soc_mas < PARAMS.SOC_PULSE1 * self.cc_capacity_mas or self.volt_v < PARAMS.FB_PULSE1_V):
                 self.state = 'REST'
                 self.test_sequence = 9
                 self.time_resting_started_s = time_iter_s
@@ -111,15 +111,15 @@ class battery_channel:
             if self.test_sequence == 14 and self.cc_soc_mas >= PARAMS.SOC_PULSE2 * self.cc_capacity_mas and self.volt_v >= PARAMS.FB_PULSE2_V:
                 self.cc_soc_mas = self.cc_soc_mas - self.curr_mas * (time_iter_s - self.time_prev_s)
                 self.time_prev_s = time_iter_s
-            if self.test_sequence == 14 and (self.cc_soc_mas < PARAMS.SOC_PULSE2 * self.cc_capcacity_mas or self.volt_v < PARAMS.FB_PULSE2_V):
+            if self.test_sequence == 14 and (self.cc_soc_mas < PARAMS.SOC_PULSE2 * self.cc_capacity_mas or self.volt_v < PARAMS.FB_PULSE2_V):
                 self.state = 'REST'
                 self.test_sequence = 15
                 self.time_resting_started_s = time_iter_s
-            if self.test_sequence == 15 and time_iter_s - self.time_resting_started_s > PARAM.TIME_TEST_REST_S:
+            if self.test_sequence == 15 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_TEST_REST_S:
                 self.state = 'DIS'
                 self.test_sequence = 16
                 self.time_resting_started_s = time_iter_s
-                if self.test_sequence == 16 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_TEST_S:
+            if self.test_sequence == 16 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_TEST_S:
                 self.state = 'REST'
                 self.test_sequence = 17
                 self.time_resting_started_s = time_iter_s
@@ -160,7 +160,7 @@ class battery_channel:
             if self.temp_c > PARAMS.TEMP_CHG_MAX_C:
                 charge_setpoint_ma = 0
             
-            if charge_setpoint_ma ~= 0:
+            if charge_setpoint_ma != 0:
                 if self.curr_ma < charge_setpoint_ma - PARAMS.CHG_SETPT_DELTA_MA:
                     self.chg_val += 1
                     self.chg_val = min(1024, self.chg_val)
@@ -172,10 +172,10 @@ class battery_channel:
             charge_setpoint_ma = 0
             if self.temp_c > PARAMS.TEMP_CHG_MIN_C and self.temp_c < PARAMS.TEMP_CHG_MAX_C:
                 charge_setpoint_ma = PARAMS.CHG_LOW_SETPT_MA
-                if self.curr_ma < charge_setpoint_ma - PARAMS.CHG_SETPT_DELTA_MA:
+                if self.curr_ma < charge_setpoint_ma - PARAMS.CHG_LOW_SETPT_DELTA_MA:
                     self.chg_low_val += 1
                     self.chg_low_val = min(1024, self.chg_low_val)
-                elif self.curr_ma > charge_setpoint_ma + PARAMS.CHG_SETPT_DELTA_MA:
+                elif self.curr_ma > charge_setpoint_ma + PARAMS.CHG_LOW_SETPT_DELTA_MA:
                     self.chg_low_val -= 1
                     self.chg_low_val = max(0, self.chg_low_val)
         
@@ -194,12 +194,12 @@ class battery_channel:
             discharge_setpoint_ma = 0
             if self.temp_c > PARAMS.TEMP_MIN_C and self.temp_c < PARAMS.TEMP_MAX_C:
                 discharge_setpoint_ma = PARAMS.DIS_LOW_SETPT_MA
-                if self.curr_ma < discharge_setpoint_ma - PARAMS.DIS_SETPT_DELTA_MA:
-                    self.dis_val += 1
-                    self.dis_val = min(256, self.dis_val)
-                elif self.curr_ma > discharge_setpoint_ma + PARAMS.DIS_SETPT_DELTA_MA:
-                    self.dis_val -= 1
-                    self.dis_val = max(0, self.dis_val)
+                if self.curr_ma < discharge_setpoint_ma - PARAMS.DIS_LOW_SETPT_DELTA_MA:
+                    self.dis_low_val += 1
+                    self.dis_low_val = min(256, self.dis_val)
+                elif self.curr_ma > discharge_setpoint_ma + PARAMS.DIS_LOW_SETPT_DELTA_MA:
+                    self.dis_low_val -= 1
+                    self.dis_low_val = max(0, self.dis_val)
         
         self.en_cur_state = False
         self.en_dis_state = False
