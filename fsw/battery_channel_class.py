@@ -64,18 +64,22 @@ class battery_channel:
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 3 and time_iter_s - self.time_resting_started_s > 2*PARAMS.TIME_TEST_REST_S:
                 self.state = 'DIS'
+                self.pulse_state = True
                 self.test_sequence = 4
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 4 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_TEST_S:
                 self.state = 'REST'
+                self.pulse_state = False
                 self.test_sequence = 5
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 5 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_REST_S:
                 self.state = 'CHG'
+                self.pulse_state = True
                 self.test_sequence = 6
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 6 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_TEST_S:
                 self.state = 'REST'
+                self.pulse_state = False
                 self.test_sequence = 7
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 7 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_REST_S:
@@ -91,18 +95,22 @@ class battery_channel:
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 9 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_TEST_REST_S:
                 self.state = 'DIS'
+                self.pulse_state = True
                 self.test_sequence = 10
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 10 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_TEST_S:
                 self.state = 'REST'
+                self.pulse_state = False
                 self.test_sequence = 11
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 11 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_REST_S:
                 self.state = 'CHG'
+                self.pulse_state = True
                 self.test_sequence = 12
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 12 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_TEST_S:
                 self.state = 'REST'
+                self.pulse_state = False
                 self.test_sequence = 13
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 13 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_REST_S:
@@ -118,18 +126,22 @@ class battery_channel:
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 15 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_TEST_REST_S:
                 self.state = 'DIS'
+                self.pulse_state = True
                 self.test_sequence = 16
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 16 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_TEST_S:
                 self.state = 'REST'
+                self.pulse_state = False
                 self.test_sequence = 17
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 17 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_REST_S:
                 self.state = 'CHG'
+                self.pulse_state = True
                 self.test_sequence = 18
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 18 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_TEST_S:
                 self.state = 'REST'
+                self.pulse_state = False
                 self.test_sequence = 19
                 self.time_resting_started_s = time_iter_s
             if self.test_sequence == 19 and time_iter_s - self.time_resting_started_s > PARAMS.TIME_PULSE_REST_S:

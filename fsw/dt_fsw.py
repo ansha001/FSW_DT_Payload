@@ -292,9 +292,9 @@ if __name__ == "__main__":
     time_prev_check_s = time_iter_s
     
     #create battery channel objects
-    ch0 = battery_channel(channel=0,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
-    ch1 = battery_channel(channel=1,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT) 
-    ch2 = battery_channel(channel=2,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
+    ch0 = battery_channel(channel=0,state='CHG',mode='CYCLE',cycle_count=19,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
+    ch1 = battery_channel(channel=1,state='CHG',mode='CYCLE',cycle_count=19,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT) 
+    ch2 = battery_channel(channel=2,state='CHG',mode='CYCLE',cycle_count=19,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
     
     #check initial state of batteries
     sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
@@ -352,7 +352,8 @@ if __name__ == "__main__":
                 if ch2.update_act:
                     update_actuators(ch2)
             
-            if time_iter_s > time_prev_log_s + PARAMS.DT_LOG_S:
+            pulse = ch0.pulse_state or ch1.pulse_state or ch2.pulse_state
+            if (time_iter_s > time_prev_log_s + PARAMS.DT_LOG_S) or (pulse and time_iter_s > time_prev_log + PARAMS.DT_SENSORS_S):
                 #do logging things
                 #TODO write to memory to prepare for reset
                 log_sensor_data(time_iter_s, sensor_data, ch0, ch1, ch2)
