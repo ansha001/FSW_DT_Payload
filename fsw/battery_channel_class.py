@@ -13,12 +13,13 @@ class battery_channel:
         self.time_prev_s = -1
         self.chg_val = chg_val
         self.dis_val = dis_val
-        self.chg_low_val = chg_val
+        self.chg_low_val = 200
         self.dis_low_val = dis_val
         self.pulse_state  = False
         self.en_chg_state = False
         self.en_dis_state = False
         self.en_cur_state = False
+        self.update_act = False
         self.cc_capacity_mas = 0
         self.cc_soc_mas = 0
         self.est_soc = 0
@@ -82,7 +83,7 @@ class battery_channel:
                 self.test_sequence = 8
                 self.time_prev_s = time_iter_s
             if self.test_sequence == 8 and self.cc_soc_mas >= PARAMS.SOC_PULSE1 * self.cc_capacity_mas and self.volt_v >= PARAMS.FB_PULSE1_V:
-                self.cc_soc_mas = self.cc_soc_mas - self.curr_mas * (time_iter_s - self.time_prev_s)
+                self.cc_soc_mas = self.cc_soc_mas - self.curr_ma * (time_iter_s - self.time_prev_s)
                 self.time_prev_s = time_iter_s
             if self.test_sequence == 8 and (self.cc_soc_mas < PARAMS.SOC_PULSE1 * self.cc_capacity_mas or self.volt_v < PARAMS.FB_PULSE1_V):
                 self.state = 'REST'
@@ -109,7 +110,7 @@ class battery_channel:
                 self.test_sequence = 14
                 self.time_prev_s = time_iter_s
             if self.test_sequence == 14 and self.cc_soc_mas >= PARAMS.SOC_PULSE2 * self.cc_capacity_mas and self.volt_v >= PARAMS.FB_PULSE2_V:
-                self.cc_soc_mas = self.cc_soc_mas - self.curr_mas * (time_iter_s - self.time_prev_s)
+                self.cc_soc_mas = self.cc_soc_mas - self.curr_ma * (time_iter_s - self.time_prev_s)
                 self.time_prev_s = time_iter_s
             if self.test_sequence == 14 and (self.cc_soc_mas < PARAMS.SOC_PULSE2 * self.cc_capacity_mas or self.volt_v < PARAMS.FB_PULSE2_V):
                 self.state = 'REST'
@@ -147,10 +148,12 @@ class battery_channel:
     def channel_action(self, PARAMS):
         charge_setpoint_ma = 0
         discharge_setpoint_ma = 0
+        self.update_act = True
         
         if self.state == 'CHG':     
             #determine charging current setpoint
             charge_setpoint_ma = 0
+            self.update_act = False
             if self.temp_c > PARAMS.TEMP_CHG_MIN_C:
                 charge_setpoint_ma = PARAMS.CHG_MIN_SETPT_MA
             if self.temp_c > PARAMS.TEMP_CHG_LOWER_C:
@@ -162,44 +165,55 @@ class battery_channel:
             
             if charge_setpoint_ma != 0:
                 if self.curr_ma < charge_setpoint_ma - PARAMS.CHG_SETPT_DELTA_MA:
-                    self.chg_val += 1
-                    self.chg_val = min(1024, self.chg_val)
+                    self.chg_val += 0.1
+                    self.chg_val = min(260, self.chg_val)
+                    self.update_act = True
                 elif self.curr_ma > charge_setpoint_ma + PARAMS.CHG_SETPT_DELTA_MA:
-                    self.chg_val -= 1
+                    self.chg_val -= 0.1
                     self.chg_val = max(0, self.chg_val)
+                    self.update_act = True
         
         if self.state == 'CHG_LOW':
             charge_setpoint_ma = 0
+            self.update_act = False
             if self.temp_c > PARAMS.TEMP_CHG_MIN_C and self.temp_c < PARAMS.TEMP_CHG_MAX_C:
                 charge_setpoint_ma = PARAMS.CHG_LOW_SETPT_MA
                 if self.curr_ma < charge_setpoint_ma - PARAMS.CHG_LOW_SETPT_DELTA_MA:
-                    self.chg_low_val += 1
-                    self.chg_low_val = min(1024, self.chg_low_val)
+                    self.chg_low_val += 0.1
+                    self.chg_low_val = min(260, self.chg_low_val)
+                    self.update_act = True
                 elif self.curr_ma > charge_setpoint_ma + PARAMS.CHG_LOW_SETPT_DELTA_MA:
-                    self.chg_low_val -= 1
+                    self.chg_low_val -= 0.1
                     self.chg_low_val = max(0, self.chg_low_val)
+                    self.update_act = True
         
         if self.state == 'DIS':
             discharge_setpoint_ma = 0
+            self.update_act = False
             if self.temp_c > PARAMS.TEMP_MIN_C and self.temp_c < PARAMS.TEMP_MAX_C:
                 discharge_setpoint_ma = PARAMS.DIS_SETPT_MA
                 if self.curr_ma < discharge_setpoint_ma - PARAMS.DIS_SETPT_DELTA_MA:
-                    self.dis_val += 1
-                    self.dis_val = min(256, self.dis_val)
+                    self.dis_val += 0.1
+                    self.dis_val = min(170, self.dis_val)
+                    self.update_act = True
                 elif self.curr_ma > discharge_setpoint_ma + PARAMS.DIS_SETPT_DELTA_MA:
-                    self.dis_val -= 1
+                    self.dis_val -= 0.1
                     self.dis_val = max(0, self.dis_val)
+                    self.update_act = True
                 
         if self.state == 'DIS_LOW':
             discharge_setpoint_ma = 0
+            self.update_act = False
             if self.temp_c > PARAMS.TEMP_MIN_C and self.temp_c < PARAMS.TEMP_MAX_C:
                 discharge_setpoint_ma = PARAMS.DIS_LOW_SETPT_MA
                 if self.curr_ma < discharge_setpoint_ma - PARAMS.DIS_LOW_SETPT_DELTA_MA:
-                    self.dis_low_val += 1
-                    self.dis_low_val = min(256, self.dis_val)
+                    self.dis_low_val += 0.1
+                    self.dis_low_val = min(170, self.dis_low_val)
+                    self.update_act = True
                 elif self.curr_ma > discharge_setpoint_ma + PARAMS.DIS_LOW_SETPT_DELTA_MA:
-                    self.dis_low_val -= 1
-                    self.dis_low_val = max(0, self.dis_val)
+                    self.dis_low_val -= 0.1
+                    self.dis_low_val = max(0, self.dis_low_val)
+                    self.update_act = True
         
         self.en_cur_state = False
         self.en_dis_state = False
