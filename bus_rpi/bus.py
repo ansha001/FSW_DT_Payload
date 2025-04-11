@@ -10,8 +10,6 @@ BAUD_RATE = 9600
 TIMEOUT_SEC = 1
 MESSAGE_TYPE_REQUEST_DATA = 1  
 
-
-
 def compute_crc32(data: bytes) -> int:
     return zlib.crc32(data)
 
@@ -74,10 +72,11 @@ def main():
     try:
         with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=TIMEOUT_SEC) as ser:
             while True:
-                send_request(ser)
-                time.sleep(1)
-                read_response(ser)
-                time.sleep(5) 
+                for msg_type in range(1, 6):  # Request packets 1 to 5
+                    send_request(ser, msg_type)
+                    time.sleep(1)
+                    read_response(ser)
+                    time.sleep(2)  
 
     except serial.SerialException as e:
         print(f"[ERROR] Serial communication error: {e}")
