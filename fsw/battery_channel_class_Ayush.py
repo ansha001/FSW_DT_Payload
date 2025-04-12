@@ -310,7 +310,7 @@ class battery_channel:
                               A_state @ self.dx_by_dtheta_k_1)
         self.dx_by_dtheta_k_1 = self.dx_by_dtheta_k - K_state_previous * C_param
 
-        # Parameter EKF - Update (every 1000 iterations to reduce computation)
+        # Parameter EKF - Update (every 1000 iterations)
         self.update_counter = getattr(self, 'update_counter', 0) + 1
         if self.update_counter % 1000 == 0:
             P_param_pred = self.P_param + self.Q_param
