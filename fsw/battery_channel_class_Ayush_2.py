@@ -25,12 +25,18 @@ class battery_channel:
         self.update_act = False
         self.cc_capacity_mas = 0
         self.cc_soc_mas = 0
+        self.est_capacity_mas = 0
         self.est_soc = 0
         self.est_volt_v = 0
         self.est_cov = np.zeros((2, 2))  # 2x2 covariance matrix for state EKF
 
         # lookup tables as class attributes
-       
+        rc_rs_values = loadmat(r'C:\Users\ayushp5\OneDrive - University of California, Davis\Lin Lab\Proteus Space - AF project\battery test files\EEMB battery files\python\RC_Rs_values_1.mat') 
+        rc_rs_values_charging = loadmat(r'C:\Users\ayushp5\OneDrive - University of California, Davis\Lin Lab\Proteus Space - AF project\battery test files\EEMB battery files\python\RC_Rs_values_1_charging.mat')
+        ocv_data = loadmat(r'C:\Users\ayushp5\OneDrive - University of California, Davis\Lin Lab\Proteus Space - AF project\battery test files\EEMB battery files\python\LIR2032_EEMB_Cell1_25C_OCV.mat')
+        data_cell2 = loadmat(r'C:\Users\ayushp5\OneDrive - University of California, Davis\Lin Lab\Proteus Space - AF project\battery test files\EEMB battery files\python\data_Cell2_25C.mat')
+    
+        
         self.SOC_table = np.linspace(0, 1, 100)  # Discharging SOC
         self.Rs_table = np.ones(100) * 0.1       # Discharging Rs
         self.R1_table = np.ones(100) * 0.2       # Discharging R1
@@ -42,6 +48,26 @@ class battery_channel:
         self.SOC_OCV = np.linspace(0, 1, 100)     # OCV SOC
         self.OCV_charge = np.linspace(3.0, 4.2, 100)  # OCV charging
         self.OCV_discharge = np.linspace(3.0, 4.2, 100)  # OCV discharging
+
+
+        # Extract lookup table values - Discharging params
+        self.lookup_table = rc_rs_values['lookupTable']
+        self.SOC_table = lookup_table['SOC'][0][0].flatten()
+        self.Rs_table = lookup_table['Rs'][0][0].flatten()
+        self.R1_table = lookup_table['R1'][0][0].flatten()
+        self.C1_table = lookup_table['C1'][0][0].flatten()
+
+        # Extract lookup table values - Charging params
+        self.lookup_table_1 = rc_rs_values_charging['lookupTable_1'][0][0]
+        self.SOC_1_table = lookup_table_1['SOC'][0][0].flatten()
+        self.Rs_1_table = lookup_table_1['Rs'][0][0].flatten()
+        self.R1_1_table = lookup_table_1['R1'][0][0].flatten()
+        self.C1_1_table = lookup_table_1['C1'][0][0].flatten()
+
+        # OCV data
+        self.SOC_OCV = ocv_data['SOC'].flatten()
+        self.OCV_charge = ocv_data['OCV_charge'].flatten()
+        self.OCV_discharge = ocv_data['OCV_discharge'].flatten()
 
         # Polynomial fit for OCV 
         degree = 5
@@ -57,7 +83,7 @@ class battery_channel:
         self.P_param = 1e-1                      # Parameter covariance
         self.Q_param = 1e-1                      # Parameter process noise
         self.R_param = 3.72725e-3                # Parameter measurement noise
-        self.x_hat_state = np.array([1.0, 0.0])  # [SOC; Vc1]
+        self.x_hat_state = np.array([0.0, 0.0])  # [SOC; Vc1]
         self.x_hat_param = 0.0464                  # Initial capacity (Ah)
         self.K_state = np.zeros(2)
         self.dx_by_dtheta_k = np.zeros(2)
