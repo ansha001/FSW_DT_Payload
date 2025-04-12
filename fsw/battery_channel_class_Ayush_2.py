@@ -25,7 +25,7 @@ class battery_channel:
         self.update_act = False
         self.cc_capacity_mas = 0
         self.cc_soc_mas = 0
-        self.est_capacity_mas = 0
+        self.est_capacity_mas = 0.0494  # Initial capacity in Ah
         self.est_soc = 0
         self.est_volt_v = 0
         self.est_cov = np.zeros((2, 2))  # 2x2 covariance matrix for state EKF
@@ -37,17 +37,17 @@ class battery_channel:
         data_cell2 = loadmat(r'C:\Users\ayushp5\OneDrive - University of California, Davis\Lin Lab\Proteus Space - AF project\battery test files\EEMB battery files\python\data_Cell2_25C.mat')
     
         
-        self.SOC_table = np.linspace(0, 1, 100)  # Discharging SOC
-        self.Rs_table = np.ones(100) * 0.1       # Discharging Rs
-        self.R1_table = np.ones(100) * 0.2       # Discharging R1
-        self.C1_table = np.ones(100) * 1000      # Discharging C1
-        self.SOC_1_table = np.linspace(0, 1, 100) # Charging SOC
-        self.Rs_1_table = np.ones(100) * 0.1      # Charging Rs
-        self.R1_1_table = np.ones(100) * 0.2      # Charging R1
-        self.C1_1_table = np.ones(100) * 1000     # Charging C1
-        self.SOC_OCV = np.linspace(0, 1, 100)     # OCV SOC
-        self.OCV_charge = np.linspace(3.0, 4.2, 100)  # OCV charging
-        self.OCV_discharge = np.linspace(3.0, 4.2, 100)  # OCV discharging
+        # self.SOC_table = np.linspace(0, 1, 100)  # Discharging SOC
+        # self.Rs_table = np.ones(100) * 0.1       # Discharging Rs
+        # self.R1_table = np.ones(100) * 0.2       # Discharging R1
+        # self.C1_table = np.ones(100) * 1000      # Discharging C1
+        # self.SOC_1_table = np.linspace(0, 1, 100) # Charging SOC
+        # self.Rs_1_table = np.ones(100) * 0.1      # Charging Rs
+        # self.R1_1_table = np.ones(100) * 0.2      # Charging R1
+        # self.C1_1_table = np.ones(100) * 1000     # Charging C1
+        # self.SOC_OCV = np.linspace(0, 1, 100)     # OCV SOC
+        # self.OCV_charge = np.linspace(3.0, 4.2, 100)  # OCV charging
+        # self.OCV_discharge = np.linspace(3.0, 4.2, 100)  # OCV discharging
 
 
         # Extract lookup table values - Discharging params
@@ -374,8 +374,15 @@ class battery_channel:
             self.P_param = (1 - K_param * C_param) * P_param_pred
             self.update_counter = 0
 
-        # Update outputs
+        # Update outputs (states)
         self.est_soc = self.x_hat_state[0]
-        self.est_volt_v = V_pred_state
+        self.est_volt_v = self.x_hat_state[1]
+        self.cc_capacity_est = self.x_hat_param
+        # Update outputs (parameters)
         self.est_cov = self.P_state
-        self.cc_capacity_mas = self.x_hat_param
+        self.K_state
+        self.x_hat_state
+        self.dx_by_dtheta_k
+        
+
+
