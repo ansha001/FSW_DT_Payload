@@ -2,9 +2,17 @@ import struct
 import zlib
 import os
 import time
+import json
 
-HEADER = b'\x30\x20\x30\x20\x30\x20\x30\x20'  # 64-bit header
-LOG_BASE_DIR = '..\log'
+HEADER = b'\x30\x20\x30\x20\x30\x20\x30\x20'
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_BASE_DIR = os.path.join(BASE_DIR, 'log')
+CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
+
+with open(CONFIG_FILE, 'r') as f:
+    CONFIG = json.load(f)
+CHUNK_ENTRIES = CONFIG.get("chunk_entries", {})
 
 # CRC and Packet Builder
 def compute_crc32(data: bytes) -> int:
@@ -14,83 +22,91 @@ def compute_crc32(data: bytes) -> int:
 Build response packet in the format - [HEADER][SIZE][TYPE][PAYLOAD][CRC32]
 """
 def build_response_packet(msg_type: int, payload: bytes) -> bytes:
-    size = len(payload) + 1 + 4  # msg_type + CRC
+    size = len(payload) + 1 + 4
     size_bytes = struct.pack('<I', size)
     type_byte = struct.pack('<B', msg_type)
     packet_wo_crc = size_bytes + type_byte + payload
     crc = compute_crc32(packet_wo_crc)
-    
+
     return HEADER + packet_wo_crc + struct.pack('<I', crc)
 
-def log_binary_packet(msg_type: int, payload: bytes):
+def get_chunk_folder(msg_type: int) -> str:
     folder = os.path.join(LOG_BASE_DIR, f"type{msg_type}")
     os.makedirs(folder, exist_ok=True)
-    timestamp = int(time.time() * 1000)
-    filename = os.path.join(folder, f"{timestamp}.bin")
-    with open(filename, 'wb') as f:
-        f.write(build_response_packet(msg_type, payload))
+    return folder
 
-""" Type 1: Time + 3 Voltages + 3 Currents (all float32) """
-def build_packet_type_1(time_s: float, voltages: list, currents: list) -> bytes:
-    payload = struct.pack('<f3f3f', time_s, *voltages, *currents)
-    return build_response_packet(1, payload)
+def get_pointer_path(msg_type: int) -> str:
+    return os.path.join(get_chunk_folder(msg_type), '.pointer')
 
-""" Type 2: 3 Channel Temps + 1 CPU Temp (all float32) """
-def build_packet_type_2(temps: list, cpu_temp: float) -> bytes:
-    payload = struct.pack('<4f', *temps, cpu_temp)
-    return build_response_packet(2, payload)
+def get_current_chunk_file(msg_type: int) -> str:
+    folder = get_chunk_folder(msg_type)
+    pointer_path = get_pointer_path(msg_type)
+    try:
+        with open(pointer_path, 'r') as f:
+            index = int(f.read().strip())
+    except (FileNotFoundError, ValueError):
+        index = 0
+    timestamp = time.strftime("%H%M%S")
+    return os.path.join(folder, f"{timestamp}_chunk{index}.bin")
 
-""" 
-    Type 3:Battery state estimator output (float32)
-    est_soc, est_volt_v, est_cov[4] 
-"""
-def build_packet_type_3(ch) -> bytes:
-    ## placeholder for state estimator output 
-    payload=0.0
-    return build_response_packet(3, payload)
+def increment_pointer(msg_type: int):
+    pointer_path = get_pointer_path(msg_type)
+    try:
+        with open(pointer_path, 'r') as f:
+            index = int(f.read().strip())
+    except:
+        index = 0
+    with open(pointer_path, 'w') as f:
+        f.write(str(index + 1))
 
-"""
-Type 4:Health summary
-cycle_count (3x uint8), resets (uint16), time_switch (3x uint16), test_sequence (3x uint8)
-"""
-def build_packet_type_4(channels: list, resets: int, time_switch: int) -> bytes:
-    payload = struct.pack('<3B H 3H 3B',
+def log_binary_packet(msg_type: int, payload: bytes):
+    chunk_file = get_current_chunk_file(msg_type)
+    entry = build_response_packet(msg_type, payload)
+
+    with open(chunk_file, 'ab') as f:
+        f.write(entry)
+
+    chunk_limit = CHUNK_ENTRIES.get(f"type{msg_type}", 20)
+    with open(chunk_file, 'rb') as f:
+        count = 0
+        while f.read(8):
+            size_bytes = f.read(4)
+            if len(size_bytes) < 4:
+                break
+            size = struct.unpack('<I', size_bytes)[0]
+            f.read(size)
+            count += 1
+
+    if count >= chunk_limit:
+        increment_pointer(msg_type)
+
+def build_packet_type_1(time_s: float, voltages, currents, temps) -> bytes:
+    return struct.pack('<f3f3f3f', time_s, *voltages, *currents, *temps)
+
+def build_packet_type_2(channels, resets, time_switches, cpu_temp: float, cpu_volt: float) -> bytes:
+    return struct.pack(
+        '<3B H 3H 3B 3B 3B 2f',
         *[ch.cycle_count for ch in channels],
         resets,
-        *[time_switch]*3,
-        *[ch.test_sequence for ch in channels]
+        *time_switches,
+        *[ch.test_sequence for ch in channels],
+        *[ch.state_code for ch in channels],
+        *[ch.mode_code for ch in channels],
+        cpu_temp,
+        cpu_volt
     )
-    return build_response_packet(4, payload)
 
-""" 
-Type 5: (System mode + state summary)
-state: CHG, DIS, REST, CHG_LOW, DIS_LOW (encoded uint8)
-mode: CYCLE, TEST (encoded uint8)
-test_sequence: (uint8) 
-"""
-def build_packet_type_5(channels: list) -> bytes:
-    state_map = {'CHG': 0, 'DIS': 1, 'REST': 2, 'CHG_LOW': 3, 'DIS_LOW': 4}
-    mode_map = {'CYCLE': 0, 'TEST': 1}
-    payload = struct.pack('<3B 3B 3B',
-        *[state_map.get(ch.state, 255) for ch in channels],
-        *[mode_map.get(ch.mode, 255) for ch in channels],
-        *[ch.test_sequence for ch in channels]
-    )
-    return build_response_packet(5, payload)
+def build_packet_type_3(estimator) -> bytes:
+    # TODO: Implement this function based on the estimator structure
+    return struct.pack(    )
 
-# Request Packet Parser
 def parse_request_packet(packet: bytes):
-    if len(packet) < 17:
-        raise ValueError("Incomplete packet")
-    if packet[:8] != HEADER:
-        raise ValueError("Invalid header")
-    
+    if len(packet) < 17 or packet[:8] != HEADER:
+        raise ValueError("Invalid or incomplete packet")
     msg_type = struct.unpack('<B', packet[12:13])[0]
     payload = packet[13:-4]
     recv_crc = struct.unpack('<I', packet[-4:])[0]
     calc_crc = compute_crc32(packet[8:-4])
-
     if recv_crc != calc_crc:
         raise ValueError("Checksum mismatch")
-    
     return msg_type, payload

@@ -16,6 +16,7 @@ from battery_channel_class import battery_channel
 from FSW_PARAMS_class import FSW_PARAMS
 from FSW_ADDRS_class import FSW_ADDRS
 from fsw.packet_handler import (
+    log_binary_packet,
     build_packet_type_1, build_packet_type_2, build_packet_type_3, build_packet_type_4, build_packet_type_5
 )
 
