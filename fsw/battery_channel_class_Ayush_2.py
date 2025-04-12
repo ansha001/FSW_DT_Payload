@@ -1,5 +1,6 @@
 import numpy as np
-
+from scipy.interpolate import interp1d
+from scipy.io import loadmat # Load the MATLAB data files
 class battery_channel:
     def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c, chg_val, dis_val):
         self.channel = channel
@@ -28,22 +29,49 @@ class battery_channel:
         self.est_volt_v = 0
         self.est_cov = np.zeros((2, 2))  # 2x2 covariance matrix for state EKF
 
-        # EKF state variables
-        self.x_hat_state = np.array([1.0, 0.0])  # [SOC, Vc1]
+        # lookup tables as class attributes
+       
+        self.SOC_table = np.linspace(0, 1, 100)  # Discharging SOC
+        self.Rs_table = np.ones(100) * 0.1       # Discharging Rs
+        self.R1_table = np.ones(100) * 0.2       # Discharging R1
+        self.C1_table = np.ones(100) * 1000      # Discharging C1
+        self.SOC_1_table = np.linspace(0, 1, 100) # Charging SOC
+        self.Rs_1_table = np.ones(100) * 0.1      # Charging Rs
+        self.R1_1_table = np.ones(100) * 0.2      # Charging R1
+        self.C1_1_table = np.ones(100) * 1000     # Charging C1
+        self.SOC_OCV = np.linspace(0, 1, 100)     # OCV SOC
+        self.OCV_charge = np.linspace(3.0, 4.2, 100)  # OCV charging
+        self.OCV_discharge = np.linspace(3.0, 4.2, 100)  # OCV discharging
+
+        # Polynomial fit for OCV 
+        degree = 5
+        self.coefficients_1 = np.polyfit(self.SOC_OCV, self.OCV_charge, degree)
+        self.coefficients = np.polyfit(self.SOC_OCV, self.OCV_discharge, degree)
+        self.derivative_coefficients_1 = np.polyder(self.coefficients_1)
+        self.derivative_coefficients = np.polyder(self.coefficients)
+
+        # EKF initializations (same as reference code)
         self.P_state = np.diag([1e-7, 1e-7])     # State covariance
         self.Q_state = np.diag([1e-6, 1e-3])     # Process noise covariance
         self.R_state = 0.015                     # Measurement noise covariance
-
-        # Parameter EKF variables
-        self.x_hat_param = 0.0                   # Estimated capacity (to be initialized)
         self.P_param = 1e-1                      # Parameter covariance
         self.Q_param = 1e-1                      # Parameter process noise
         self.R_param = 3.72725e-3                # Parameter measurement noise
-        self.dx_by_dtheta_k = np.zeros(2)        # Sensitivity vector
-        self.dx_by_dtheta_k_1 = np.zeros(2)      # Previous sensitivity vector
-        self.K_state = np.zeros(2)               # State Kalman gain
+        self.x_hat_state = np.array([1.0, 0.0])  # [SOC; Vc1]
+        self.x_hat_param = 0.0464                  # Initial capacity (Ah)
+        self.K_state = np.zeros(2)
+        self.dx_by_dtheta_k = np.zeros(2)
+        self.dx_by_dtheta_k_1 = np.zeros(2)
+        self.update_counter = 0
+
+    def dOCV_dSOC_1(self, soc):
+        return np.polyval(self.derivative_coefficients_1, soc)
+
+    def dOCV_dSOC(self, soc):
+        return np.polyval(self.derivative_coefficients, soc)
 
     def channel_logic(self, time_iter_s, PARAMS):
+        
         if self.cycle_count < PARAMS.NUM_CYCLES_PER_TEST:
             self.mode = 'CYCLE'
             if self.state == 'CHG' and self.volt_v >= PARAMS.CHG_LIMIT_V:
@@ -265,37 +293,35 @@ class battery_channel:
         # Update current
         self.curr_ma = meas_curr_ma
 
-        # State EKF - Prediction
-        
-        A_state = np.array([[1, 0],
-                            [0, np.exp(-dt / (R1_seg[k-1] * C1_seg[k-1]))]])
-        x_hat_state_pred = np.zeros(2)
-        x_hat_state_pred[0] = self.x_hat_state[0] - (dt / self.x_hat_param) * meas_curr_ma
-        x_hat_state_pred[1] = (np.exp(-dt / tau) * self.x_hat_state[1] +
-                              R1 * (1 - np.exp(-dt / tau)) * meas_curr_ma)
-        P_state_pred = A_state @ self.P_state @ A_state.T + self.Q_state
-
         # Lookup R1, C1 based on charging/discharging
         if meas_curr_ma < 0:  # Charging
-            R1 = np.interp(self.x_hat_state[0], self.SOC_1_table, self.R1_1_table)
-            C1 = np.interp(self.x_hat_state[0], self.SOC_1_table, self.C1_1_table)
+            R1 = interp1d(self.SOC_1_table, self.R1_1_table, kind='linear', fill_value='extrapolate')(self.x_hat_state[0])
+            C1 = interp1d(self.SOC_1_table, self.C1_1_table, kind='linear', fill_value='extrapolate')(self.x_hat_state[0])
         else:  # Discharging
-            R1 = np.interp(self.x_hat_state[0], self.SOC_table, self.R1_table)
-            C1 = np.interp(self.x_hat_state[0], self.SOC_table, self.C1_table)
+            R1 = interp1d(self.SOC_table, self.R1_table, kind='linear', fill_value='extrapolate')(self.x_hat_state[0])
+            C1 = interp1d(self.SOC_table, self.C1_table, kind='linear', fill_value='extrapolate')(self.x_hat_state[0])
 
-        
+        # State EKF - Prediction
+        A_state = np.array([[1, 0],
+                            [0, np.exp(-dt / (R1 * C1))]])
+        x_hat_state_pred = np.zeros(2)
+        x_hat_state_pred[0] = self.x_hat_state[0] - (dt / self.x_hat_param) * meas_curr_ma
+        x_hat_state_pred[1] = (np.exp(-dt / (R1 * C1)) * self.x_hat_state[1] +
+                              R1 * (1 - np.exp(-dt / (R1 * C1))) * meas_curr_ma)
+        P_state_pred = A_state @ self.P_state @ A_state.T + self.Q_state
 
         # State EKF - Measurement Update
         if meas_curr_ma < 0:  # Charging
-            Rs = np.interp(x_hat_state_pred[0], self.SOC_1_table, self.Rs_1_table)
-            OCV_pred = np.interp(x_hat_state_pred[0], self.SOC_OCV, self.OCV_charge)
-            dOCV_dSOC_k = np.polyval(self.derivative_coefficients_1, x_hat_state_pred[0])
+            Rs = interp1d(self.SOC_1_table, self.Rs_1_table, kind='linear', fill_value='extrapolate')(x_hat_state_pred[0])
+            OCV_pred = interp1d(self.SOC_OCV, self.OCV_charge, kind='linear', fill_value='extrapolate')(x_hat_state_pred[0])
+            dOCV_dSOC_k = self.dOCV_dSOC_1(x_hat_state_pred[0])
+            V_pred_state = OCV_pred - x_hat_state_pred[1] - Rs * meas_curr_ma
         else:  # Discharging
-            Rs = np.interp(x_hat_state_pred[0], self.SOC_table, self.Rs_table)
-            OCV_pred = np.interp(x_hat_state_pred[0], self.SOC_OCV, self.OCV_discharge)
-            dOCV_dSOC_k = np.polyval(self.derivative_coefficients, x_hat_state_pred[0])
+            Rs = interp1d(self.SOC_table, self.Rs_table, kind='linear', fill_value='extrapolate')(x_hat_state_pred[0])
+            OCV_pred = interp1d(self.SOC_OCV, self.OCV_discharge, kind='linear', fill_value='extrapolate')(x_hat_state_pred[0])
+            dOCV_dSOC_k = self.dOCV_dSOC(x_hat_state_pred[0])
+            V_pred_state = OCV_pred - x_hat_state_pred[1] - Rs * meas_curr_ma
 
-        V_pred_state = OCV_pred - x_hat_state_pred[1] - Rs * meas_curr_ma
         C_state = np.array([dOCV_dSOC_k, -1])
         K_state_previous = self.K_state.copy()
         denom = C_state @ P_state_pred @ C_state.T + self.R_state
@@ -306,14 +332,12 @@ class battery_channel:
         self.P_state = P_state_pred - np.outer(self.K_state, C_state) @ P_state_pred
 
         # Parameter EKF - Intermediate
-        C_param = (dOCV_dSOC_k * dt * meas_curr_ma / (self.x_hat_param**2) +
-                   np.array([dOCV_dSOC_k, 0]) @ self.dx_by_dtheta_k)
-        self.dx_by_dtheta_k = (np.array([dt * meas_curr_ma / (self.x_hat_param**2), 0]) +
-                              A_state @ self.dx_by_dtheta_k_1)
+        C_param = dOCV_dSOC_k * dt * meas_curr_ma / (self.x_hat_param**2) + np.array([dOCV_dSOC_k, 0]) @ self.dx_by_dtheta_k
+        self.dx_by_dtheta_k = np.array([dt * meas_curr_ma / (self.x_hat_param**2), 0]) + A_state @ self.dx_by_dtheta_k_1
         self.dx_by_dtheta_k_1 = self.dx_by_dtheta_k - K_state_previous * C_param
 
-        # Parameter EKF - Update (every 1000 iterations)
-        self.update_counter = getattr(self, 'update_counter', 0) + 1
+        # Parameter EKF - Update
+        self.update_counter += 1
         if self.update_counter % 1000 == 0:
             P_param_pred = self.P_param + self.Q_param
             denom_param = C_param * P_param_pred * C_param + self.R_param
@@ -328,5 +352,4 @@ class battery_channel:
         self.est_soc = self.x_hat_state[0]
         self.est_volt_v = V_pred_state
         self.est_cov = self.P_state
-        self.cc_capacity_mas = self.x_hat_param  # Update capacity estimate
-
+        self.cc_capacity_mas = self.x_hat_param
