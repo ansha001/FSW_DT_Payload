@@ -16,10 +16,9 @@ from battery_channel_class import battery_channel
 from FSW_PARAMS_class import FSW_PARAMS
 from FSW_ADDRS_class import FSW_ADDRS
 from fsw.packet_handler import (
-    log_binary_packet,
+    log_binary packet,
     build_packet_type_1, build_packet_type_2, build_packet_type_3, build_packet_type_4, build_packet_type_5
 )
-
 
 # load addresses
 ADDRS = FSW_ADDRS()
@@ -34,7 +33,8 @@ while os.path.exists(file_name + str(trial)+ '.csv'):
     trial += 1
 file_name = file_name + str(trial) + '.csv'
 header = ['Time (s)','Temp0','Temp1','Temp2','Temp_CPU','Volt0','Volt1','Volt2','Volt_CPU','Curr0','Curr1','Curr2','Cyc0','Cyc1','Cyc2','Seq0','Seq1','Seq2',
-          'disval0','disval1','disval2','dislowval0','dislowval1','dislowval2','chgval0','chgval1','chgval2','chglowval0','chglowval1','chglowval2']
+          'disval0','disval1','disval2','dislowval0','dislowval1','dislowval2','chgval0','chgval1','chgval2','chglowval0','chglowval1','chglowval2',
+          'estSOC0','estSOC1','estSOC2','estCAP0','estCAP1','estCAP2','estV0','estV1','estV2']
 with open(file_name, 'w', encoding='UTF8', newline='') as f:
     writer = csv.writer(f)
     writer.writerow(header)
@@ -147,6 +147,11 @@ def get_CPU_voltage():
     #print('CPU Voltage is ',voltage,'V')
     return voltage_v
 
+def get_CPU_frequency():
+    output = subprocess.check_output(['vcgencmd','measure_clock arm'])
+    freq = 0  #TODO look at returned statement
+    return freq
+
 def read_voltage(channel):
     voltage_raw = bus.read_word_data(ADDRS.INA_ADDRS[channel], 0x02)  #should return 16-bit only positive values
     voltage_raw = ((voltage_raw << 8) & 0xFF00) | (voltage_raw >> 8)
@@ -199,7 +204,9 @@ def log_sensor_data(time_s, data, ch0, ch1, ch2):
         writer.writerow([str(time_s),str(data[0]),str(data[1]),str(data[2]),str(data[3]),str(data[4]),str(data[5]),str(data[6]),str(data[7]),str(data[8]),str(data[9]),str(data[10]),
                          str(ch0.cycle_count),str(ch1.cycle_count),str(ch2.cycle_count),str(ch0.test_sequence),str(ch1.test_sequence),str(ch2.test_sequence),
                          str(ch0.dis_val),str(ch1.dis_val),str(ch2.dis_val),str(ch0.dis_low_val),str(ch1.dis_low_val),str(ch2.dis_low_val),
-                         str(ch0.chg_val),str(ch1.chg_val),str(ch2.chg_val),str(ch0.chg_low_val),str(ch1.chg_low_val),str(ch2.chg_low_val)])
+                         str(ch0.chg_val),str(ch1.chg_val),str(ch2.chg_val),str(ch0.chg_low_val),str(ch1.chg_low_val),str(ch2.chg_low_val),
+                         str(ch0.est_soc),str(ch1.est_soc),str(ch2.est_soc),str(ch0.est_capacity_as),str(ch1.est_capacity_as),str(ch2.est_capacity_as),
+                         str(ch0.est_volt_v),str(ch1.est_volt_v),str(ch2.est_volt_v)])
 
 def update_actuators(ch):
     #set GPIO first
@@ -297,9 +304,9 @@ if __name__ == "__main__":
     time_prev_check_s = time_iter_s
     
     #create battery channel objects
-    ch0 = battery_channel(channel=0,state='CHG',mode='CYCLE',cycle_count=19,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
-    ch1 = battery_channel(channel=1,state='CHG',mode='CYCLE',cycle_count=19,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT) 
-    ch2 = battery_channel(channel=2,state='CHG',mode='CYCLE',cycle_count=19,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
+    ch0 = battery_channel(channel=0,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
+    ch1 = battery_channel(channel=1,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT) 
+    ch2 = battery_channel(channel=2,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
     
     #check initial state of batteries
     sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
@@ -350,15 +357,15 @@ if __name__ == "__main__":
                 
                 
                 #push those actuator values to the board
-                #if ch0.update_act:
-                #    update_actuators(ch0)
-                #if ch1.update_act:
-                #    update_actuators(ch1)
+                if ch0.update_act:
+                    update_actuators(ch0)
+                if ch1.update_act:
+                    update_actuators(ch1)
                 if ch2.update_act:
                     update_actuators(ch2)
             
             pulse = ch0.pulse_state or ch1.pulse_state or ch2.pulse_state
-            if (time_iter_s > time_prev_log_s + PARAMS.DT_LOG_S) or (pulse and time_iter_s > time_prev_log + PARAMS.DT_SENSORS_S):
+            if (time_iter_s > time_prev_log_s + PARAMS.DT_LOG_S) or (pulse and time_iter_s > time_prev_log_s + PARAMS.DT_SENSORS_S):
                 #do logging things
                 #TODO write to memory to prepare for reset
                 log_sensor_data(time_iter_s, sensor_data, ch0, ch1, ch2)
@@ -373,29 +380,31 @@ if __name__ == "__main__":
                 print('ch_stat:'+ch0.state+','+ch1.state+','+ch2.state)
                 print('ch_mode:'+ch0.mode+','+ch1.mode+','+ch2.mode)
                 print('Test_sq: %3.1f, %3.1f, %3.1f' % (ch0.test_sequence, ch1.test_sequence, ch2.test_sequence))
+                print('SOC_est: %5.2f, %5.2f, %5.2f' % (ch0.est_soc, ch1.est_soc, ch2.est_soc))
+                print('CAP est: %5.2f, %5.2f, %5.2f' % (ch0.est_capacity_as, ch1.est_capacity_as, ch2.est_capacity_as))
                 time_prev_log_s = time_iter_s
                 
             if time_iter_s > time_prev_fast_s + PARAMS.DT_FAST_S:
                 #fast loop EKF things, state estimator
                 if ch0.mode == 'CYCLE':
-                    ch0.state_estimate_fast(volt_iter_v[0], curr_iter_ma[0])
+                    ch0.state_estimate(volt_iter_v[0], curr_iter_ma[0], time_iter_s)
                 if ch1.mode == 'CYCLE':
-                    ch1.state_estimate_fast(volt_iter_v[1], curr_iter_ma[1])
+                    ch1.state_estimate(volt_iter_v[1], curr_iter_ma[1], time_iter_s)
                 if ch2.mode == 'CYCLE':
-                    ch2.state_estimate_fast(volt_iter_v[2], curr_iter_ma[2])
+                    ch2.state_estimate(volt_iter_v[2], curr_iter_ma[2], time_iter_s)
                 
                 #print('heartbeat, fast loop')
                 time_prev_fast_s = time_iter_s
                 
-            if time_iter_s > time_prev_slow_s + PARAMS.DT_SLOW_S:
-                #TODO - this might be a problem with shielding the slow EKF during RPT?
-                #do slow loop EKF things
-                ch0.state_estimate_slow(volt_iter_v[0], curr_iter_ma[0])
-                ch1.state_estimate_slow(volt_iter_v[1], curr_iter_ma[1])
-                ch2.state_estimate_slow(volt_iter_v[2], curr_iter_ma[2])
-                
-                print('heartbeat, slow EKF')
-                time_prev_slow_s = time_iter_s
+#             if time_iter_s > time_prev_slow_s + PARAMS.DT_SLOW_S:
+#                 #TODO - this might be a problem with shielding the slow EKF during RPT?
+#                 #do slow loop EKF things
+#                 ch0.state_estimate_slow(volt_iter_v[0], curr_iter_ma[0])
+#                 ch1.state_estimate_slow(volt_iter_v[1], curr_iter_ma[1])
+#                 ch2.state_estimate_slow(volt_iter_v[2], curr_iter_ma[2])
+#                 
+#                 print('heartbeat, slow EKF')
+#                 time_prev_slow_s = time_iter_s
 
             if time_iter_s > time_prev_heat_s + PARAMS.DT_HEAT_S:
                 #check if heater should be on
