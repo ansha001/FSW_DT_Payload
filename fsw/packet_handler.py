@@ -129,3 +129,39 @@ def read_global_pointer() -> int:
 def write_global_pointer(msg_type: int):
     with open(GLOBAL_POINTER_PATH, 'w') as f:
         f.write(str(msg_type % 256))
+
+def get_file_path(msg_type: int, index: int) -> str:
+    folder = get_chunk_folder(msg_type)
+    for fname in sorted(os.listdir(folder)):
+        if fname.endswith(f"_{index}.bin"):
+            return os.path.join(folder, fname)
+    return None
+
+def get_latest_index(msg_type: int) -> int:
+    folder = get_chunk_folder(msg_type)
+    max_index = -1
+    for f in os.listdir(folder):
+        if f.endswith(".bin"):
+            try:
+                idx = int(f.split('_')[-1].replace(".bin", ""))
+                if idx > max_index:
+                    max_index = idx
+            except:
+                continue
+    return max_index
+
+def get_next_packet_to_send() -> bytes:
+    for msg_type in [3, 2, 1]:  # Priority order
+        last_sent = read_pointer(msg_type, 'last_sent')
+        latest = get_latest_index(msg_type)
+
+        if latest > last_sent:
+            path = get_file_path(msg_type, last_sent + 1)
+            if path:
+                with open(path, 'rb') as f:
+                    data = f.read()
+
+                write_pointer(msg_type, last_sent + 1, 'last_sent')
+                write_global_pointer(msg_type)
+                return data
+    return None  # No packets ready
