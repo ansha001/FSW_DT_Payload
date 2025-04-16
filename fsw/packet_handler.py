@@ -6,6 +6,8 @@ import json
 
 HEADER = b'\x30\x20\x30\x20\x30\x20\x30\x20'
 
+MAX_FILE_INDEX = 10**6
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_BASE_DIR = os.path.join(BASE_DIR, 'log')
 CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
@@ -35,29 +37,32 @@ def get_chunk_folder(msg_type: int) -> str:
     os.makedirs(folder, exist_ok=True)
     return folder
 
-def get_pointer_path(msg_type: int) -> str:
-    return os.path.join(get_chunk_folder(msg_type), '.pointer')
+def get_pointer_path(msg_type: int, pointer_name='current') -> str:
+    return os.path.join(get_chunk_folder(msg_type), f'.{pointer_name}_pointer')
+
+def read_pointer(msg_type: int, pointer_name='current') -> int:
+    path = get_pointer_path(msg_type, pointer_name)
+    try:
+        with open(path, 'r') as f:
+            return int(f.read().strip())
+    except (FileNotFoundError, ValueError):
+        return 0
+    
+def write_pointer(msg_type: int, value: int, pointer_name='current'):
+    path = get_pointer_path(msg_type, pointer_name)
+    with open(path, 'w') as f:
+        f.write(str(value % MAX_FILE_INDEX))
 
 def get_current_chunk_file(msg_type: int) -> str:
     folder = get_chunk_folder(msg_type)
-    pointer_path = get_pointer_path(msg_type)
-    try:
-        with open(pointer_path, 'r') as f:
-            index = int(f.read().strip())
-    except (FileNotFoundError, ValueError):
-        index = 0
+    index = read_pointer(msg_type, 'current')
     timestamp = time.strftime("%H%M%S")
-    return os.path.join(folder, f"{timestamp}_chunk{index}.bin")
+    return os.path.join(folder, f"{timestamp}_{index}.bin")
 
 def increment_pointer(msg_type: int):
-    pointer_path = get_pointer_path(msg_type)
-    try:
-        with open(pointer_path, 'r') as f:
-            index = int(f.read().strip())
-    except:
-        index = 0
-    with open(pointer_path, 'w') as f:
-        f.write(str(index + 1))
+    index = read_pointer(msg_type, 'current') + 1
+    write_pointer(msg_type, index, 'current')
+
 
 def log_binary_packet(msg_type: int, payload: bytes):
     chunk_file = get_current_chunk_file(msg_type)
@@ -110,3 +115,17 @@ def parse_request_packet(packet: bytes):
     if recv_crc != calc_crc:
         raise ValueError("Checksum mismatch")
     return msg_type, payload
+
+
+GLOBAL_POINTER_PATH = os.path.join(LOG_BASE_DIR, '.last_sent_msg_type')
+
+def read_global_pointer() -> int:
+    try:
+        with open(GLOBAL_POINTER_PATH, 'r') as f:
+            return int(f.read().strip())
+    except (FileNotFoundError, ValueError):
+        return 0
+
+def write_global_pointer(msg_type: int):
+    with open(GLOBAL_POINTER_PATH, 'w') as f:
+        f.write(str(msg_type % 256))
