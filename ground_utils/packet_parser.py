@@ -103,5 +103,3 @@ def parse_bin_file(file_path):
             print(f"Parsed Packet Type {msg_type}:\n", parsed)
             print("-"*60)
 
-# Example usage:
-# parse_bin_file("log/type1/123456_0.bin")

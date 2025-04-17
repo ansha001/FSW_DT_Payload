@@ -56,8 +56,7 @@ def write_pointer(msg_type: int, value: int, pointer_name='current'):
 def get_current_chunk_file(msg_type: int) -> str:
     folder = get_chunk_folder(msg_type)
     index = read_pointer(msg_type, 'current')
-    timestamp = time.strftime("%H%M%S")
-    return os.path.join(folder, f"{timestamp}_{index}.bin")
+    return os.path.join(folder, f"{msg_type}_{index}.bin")
 
 def increment_pointer(msg_type: int):
     index = read_pointer(msg_type, 'current') + 1
@@ -160,18 +159,17 @@ def write_global_pointer(msg_type: int):
 
 def get_file_path(msg_type: int, index: int) -> str:
     folder = get_chunk_folder(msg_type)
-    for fname in sorted(os.listdir(folder)):
-        if fname.endswith(f"_{index}.bin"):
-            return os.path.join(folder, fname)
-    return None
+    filename = f"{msg_type}_{index}.bin"
+    path = os.path.join(folder, filename)
+    return path if os.path.exists(path) else None
 
 def get_latest_index(msg_type: int) -> int:
     folder = get_chunk_folder(msg_type)
     max_index = -1
     for f in os.listdir(folder):
-        if f.endswith(".bin"):
+        if f.endswith(".bin") and f.startswith(f"{msg_type}_"):
             try:
-                idx = int(f.split('_')[-1].replace(".bin", ""))
+                idx = int(f.split('_')[1].replace(".bin", ""))
                 if idx > max_index:
                     max_index = idx
             except:
@@ -193,3 +191,22 @@ def get_next_packet_to_send() -> bytes:
                 write_global_pointer(msg_type)
                 return data
     return None  # No packets ready
+
+def get_last_sent_packet() -> bytes:
+    msg_type = read_global_pointer()
+    last_sent_index = read_pointer(msg_type, 'last_sent')
+
+    path = get_file_path(msg_type, last_sent_index)
+    if path and os.path.exists(path):
+        with open(path, 'rb') as f:
+            return f.read()
+    return None
+
+def handle_request_packet(packet: bytes) -> bytes:
+    msg_type, payload = parse_request_packet(packet)
+
+    if msg_type == 0:
+        print("Resend request received.")
+        return get_last_sent_packet()
+    else:
+        return get_next_packet_to_send()
