@@ -16,8 +16,8 @@ from battery_channel_class import battery_channel
 from FSW_PARAMS_class import FSW_PARAMS
 from FSW_ADDRS_class import FSW_ADDRS
 from fsw.packet_handler import (
-    log_binary packet,
-    build_packet_type_1, build_packet_type_2, build_packet_type_3, build_packet_type_4, build_packet_type_5
+    log_binary_packet,
+    build_packet_type_1, build_packet_type_2, build_packet_type_3
 )
 
 # load addresses
@@ -308,6 +308,20 @@ if __name__ == "__main__":
     ch1 = battery_channel(channel=1,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT) 
     ch2 = battery_channel(channel=2,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
     
+    # Track last mode switch timestamps per channel
+    last_mode_switch = {
+        0: time_iter_s,
+        1: time_iter_s,
+        2: time_iter_s
+    }
+
+    # Store current modes for switch detection
+    last_mode = {
+        0: ch0.mode,
+        1: ch1.mode,
+        2: ch2.mode
+    }
+
     #check initial state of batteries
     sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
     log_sensor_data(time_iter_s, sensor_data, ch0, ch1, ch2)
@@ -332,6 +346,34 @@ if __name__ == "__main__":
                 volt_iter_v  = sensor_data[4:7]
                 curr_iter_ma = sensor_data[8:11]
                 time_prev_sensors_s = time_iter_s
+
+                payload_1 = build_packet_type_1(
+                time_s=time_iter_s,
+                voltages=[ch0.volt_v, ch1.volt_v, ch2.volt_v],
+                currents=[ch0.curr_ma, ch1.curr_ma, ch2.curr_ma],
+                temps=[ch0.temp_c, ch1.temp_c, ch2.temp_c]
+                )
+                log_binary_packet(1, payload_1)
+
+                for i, ch in enumerate([ch0, ch1, ch2]):
+                    if ch.mode != last_mode[i]:
+                        last_mode_switch[i] = time_iter_s
+                        last_mode[i] = ch.mode
+
+                time_switches = [
+                    int(time_iter_s - last_mode_switch[0]),
+                    int(time_iter_s - last_mode_switch[1]),
+                    int(time_iter_s - last_mode_switch[2])
+                ]
+
+                payload_2 = build_packet_type_2(
+                    channels=[ch0, ch1, ch2],
+                    resets=0,
+                    time_switches=time_switches,
+                    cpu_temp=get_CPU_temperature(),
+                    cpu_volt=get_CPU_voltage()
+                )
+                log_binary_packet(2, payload_2)
                 
                 #check mode and state, update if necessary
                 ch0.channel_logic(time_iter_s, PARAMS)
@@ -405,6 +447,9 @@ if __name__ == "__main__":
 #                 
 #                 print('heartbeat, slow EKF')
 #                 time_prev_slow_s = time_iter_s
+
+                payload_3 = build_packet_type_3(ch0, ch1, ch2)
+                log_binary_packet(3, payload_3)
 
             if time_iter_s > time_prev_heat_s + PARAMS.DT_HEAT_S:
                 #check if heater should be on

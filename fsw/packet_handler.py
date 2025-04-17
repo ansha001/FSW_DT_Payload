@@ -101,9 +101,37 @@ def build_packet_type_2(channels, resets, time_switches, cpu_temp: float, cpu_vo
         cpu_volt
     )
 
-def build_packet_type_3(estimator) -> bytes:
-    # TODO: Implement this function based on the estimator structure
-    return struct.pack(    )
+def build_packet_type_3(ch0, ch1, ch2) -> bytes:
+    return struct.pack(
+        '<' + '2f4f4f4f4f' * 3,
+        ch0.estimated_soc,
+        ch0.estimated_voltage,
+        *ch0.cov_state,
+        ch0.capacity,
+        ch0.ohmic_resistance,
+        ch0.capacitance,
+        ch0.resistance,
+        *ch0.cov_param,
+
+        ch1.estimated_soc,
+        ch1.estimated_voltage,
+        *ch1.cov_state,
+        ch1.capacity,
+        ch1.ohmic_resistance,
+        ch1.capacitance,
+        ch1.resistance,
+        *ch1.cov_param,
+
+        ch2.estimated_soc,
+        ch2.estimated_voltage,
+        *ch2.cov_state,
+        ch2.capacity,
+        ch2.ohmic_resistance,
+        ch2.capacitance,
+        ch2.resistance,
+        *ch2.cov_param,
+    )
+
 
 def parse_request_packet(packet: bytes):
     if len(packet) < 17 or packet[:8] != HEADER:

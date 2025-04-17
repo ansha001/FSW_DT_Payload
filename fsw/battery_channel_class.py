@@ -405,3 +405,21 @@ class battery_channel:
         
 
 
+    @property
+    def state_code(self):
+        return {
+            'CHG': 0,
+            'DIS': 1,
+            'REST': 2,
+            'CHG_REST': 3,
+            'DIS_REST': 4,
+            'CHG_LOW': 5,
+            'DIS_LOW': 6
+        }.get(self.state, 255)  # 255 = undefined
+
+    @property
+    def mode_code(self):
+        return {
+            'CYCLE': 0,
+            'TEST': 1
+        }.get(self.mode, 255)
