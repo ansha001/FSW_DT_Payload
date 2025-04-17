@@ -18,20 +18,26 @@ MESSAGE_TYPE_UPDATE_PARAMS = 3
 def compute_crc32(data: bytes) -> int:
     return zlib.crc32(data)
 
-def build_packet(message_type: int) -> bytes:
+def build_packet(message_type: int, argument: str = "") -> bytes:
     """
-    Builds a send packet in the format of [HEADER][SIZE][TYPE][CHECKSUM]
+    Builds a send packet in the format of [HEADER][SIZE][TYPE][ARGUMENT][CHECKSUM]
     """
-    payload = struct.pack('<B', message_type)  # 1 byte - message type
-    size = len(payload) + 4                    # 4 bytes - checksum
-    size_bytes = struct.pack('<I', size)       # 4 bytes - message size
+    type_byte = struct.pack('<B', message_type)
+
+    if argument:
+        argument_bytes = argument.encode('utf-8')  # e.g., b"1_5"
+    else:
+        argument_bytes = b""
+
+    payload = type_byte + argument_bytes
+    size = len(payload) + 4  # TYPE + ARG + CRC
+    size_bytes = struct.pack('<I', size)
     packet_without_checksum = size_bytes + payload
 
     checksum = compute_crc32(packet_without_checksum)
     checksum_bytes = struct.pack('<I', checksum)
-    
-    send_packet = HEADER + packet_without_checksum + checksum_bytes
-    return send_packet
+
+    return HEADER + packet_without_checksum + checksum_bytes
 
 def parse_response_packet(packet: bytes):
     """
@@ -55,10 +61,10 @@ def parse_response_packet(packet: bytes):
 
     return message_type, payload
 
-def send_request(ser: serial.Serial, message_type: int = MESSAGE_TYPE_SEND_NEXT):
-    packet = build_packet(message_type)
+def send_request(ser: serial.Serial, message_type: int = MESSAGE_TYPE_SEND_NEXT, argument: str = ""):
+    packet = build_packet(message_type, argument)
     ser.write(packet)
-    print(f"[INFO] Sent packet request with message type {message_type}")
+    print(f"[INFO] Sent packet with type={message_type}, argument='{argument}'")
 
 def read_response(ser: serial.Serial):
     if ser.in_waiting >= 17:
@@ -85,15 +91,21 @@ def main():
     try:
         with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=TIMEOUT_SEC) as ser:
             while True:
-                user_input = input("Enter command (n=next, r=resend): ").strip()
-                if user_input == 'r':
-                    send_request(ser, MESSAGE_TYPE_RESEND_LAST)
-                else:
-                    send_request(ser, MESSAGE_TYPE_SEND_NEXT)
+                    user_input = input("Enter command (n=next, r=resend, s <type>_<index>): ").strip()
+                    if user_input == 'r':
+                        send_request(ser, MESSAGE_TYPE_RESEND_LAST)
+                    elif user_input == 'n':
+                        send_request(ser, MESSAGE_TYPE_SEND_NEXT)
+                    elif user_input.startswith("s "):
+                        argument = user_input.split(" ", 1)[1]
+                        send_request(ser, MESSAGE_TYPE_REQUEST_SPECIFIC, argument=argument)
+                    else:
+                        print("[INFO] Unknown command. Use 'n', 'r', or 's <type>_<index>'")
+                        continue
 
-                time.sleep(1)
-                read_response(ser)
-                time.sleep(5)
+                    time.sleep(1)
+                    read_response(ser)
+                    time.sleep(5)
 
     except serial.SerialException as e:
         print(f"[ERROR] Serial communication error: {e}")

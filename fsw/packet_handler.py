@@ -208,5 +208,34 @@ def handle_request_packet(packet: bytes) -> bytes:
     if msg_type == 0:
         print("Resend request received.")
         return get_last_sent_packet()
+
+    elif msg_type == 2:
+        print(f"Specific packet request received with argument: {payload}")
+        requested_type, requested_index = parse_specific_request_argument(payload)
+        if requested_type is not None and requested_index is not None:
+            path = get_file_path(requested_type, requested_index)
+            if path:
+                with open(path, 'rb') as f:
+                    return f.read()
+            else:
+                print(f"[ERROR] File not found: {requested_type}_{requested_index}.bin")
+                return None
+        else:
+            print("[ERROR] Failed to decode specific request payload.")
+            return None
+
     else:
+        print("Next packet request received.")
         return get_next_packet_to_send()
+
+    
+    
+def parse_specific_request_argument(payload: bytes):
+    try:
+        decoded = payload.decode('utf-8')
+        msg_type_str, index_str = decoded.split('_')
+        return int(msg_type_str), int(index_str)
+    except Exception:
+        print("[ERROR] Invalid specific packet argument. Expected something like '2_3'")
+        return None, None
+    
