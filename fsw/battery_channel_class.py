@@ -27,11 +27,12 @@ class battery_channel:
         self.update_act = False
         self.cc_capacity_mas = 0
         self.cc_soc_mas = 0
-        self.est_capacity_as = 0.0476705 * 3600   # Initial capacity in As
         
+        self.est_capacity_as = 0.0476705 * 3600   # Initial capacity in As
         self.est_soc = 0
         self.est_volt_v = 0
-        self.est_cov = np.zeros((2, 2))  # 2x2 covariance matrix for state EKF
+        self.est_cov_state = np.zeros((2, 2))  # 2x2 covariance matrix for state EKF
+        self.est_cov_param = -1 #covariance for param EKF
 
         # lookup tables as class attributes
         rc_rs_values = loadmat(r'mat_files/RC_Rs_values_1.mat') 
@@ -406,7 +407,8 @@ class battery_channel:
         self.est_volt_v = OCV_pred - self.x_hat_state[1] - Rs * meas_curr_a
         self.est_capacity_as = self.x_hat_param
         # Update outputs (parameters)
-        self.est_cov = self.P_state
+        self.est_cov_state = self.P_state
+        self.est_cov_param = self.P_param
         self.meas_curr_a_k_1 = meas_curr_a 
         #self.K_state
         #self.x_hat_state
@@ -430,4 +432,5 @@ class battery_channel:
             'CYCLE': 0,
             'TEST': 1
             }.get(self.mode, 255)
+
 
