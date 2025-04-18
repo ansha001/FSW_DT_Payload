@@ -24,7 +24,7 @@ from packet_handler import (
 
 # Init serial port to communicate with the mock bus
 try:
-    bus_serial = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.1)
+    bus_serial = serial.Serial('/dev/serial0', 115200, timeout=0.1)
     print("[INFO] Bus serial connection established")
 except Exception as e:
     print(f"[ERROR] Failed to open serial port for bus: {e}")

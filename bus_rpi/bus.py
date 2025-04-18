@@ -6,7 +6,7 @@ import os
 
 # Constants
 HEADER = b'\x30\x20\x30\x20\x30\x20\x30\x20'  # 64-bit - 0x3020302030203020
-SERIAL_PORT = '/dev/ttyUSB0'           
+SERIAL_PORT = '/dev/serial0'           
 BAUD_RATE = 115200
 TIMEOUT_SEC = 1
 
