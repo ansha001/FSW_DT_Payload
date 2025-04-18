@@ -351,28 +351,28 @@ if __name__ == "__main__":
                 check_for_data_request()
                 time_prev_check_s = time_iter_s
 
-            # Handle incoming data request from bus
-            if bus_serial and bus_serial.in_waiting >= 17:
+            if bus_serial:
                 try:
-                    header_and_size = bus_serial.read(12)
-                    if header_and_size[:8] != b'\x30\x20\x30\x20\x30\x20\x30\x20':
-                        print("[BUS] Invalid packet header received.")
-                        continue
+                    waiting_bytes = bus_serial.in_waiting  
+                    if waiting_bytes >= 17:
+                        header_and_size = bus_serial.read(12)
+                        if header_and_size[:8] != b'\x30\x20\x30\x20\x30\x20\x30\x20':
+                            print("[BUS] Invalid packet header received.")
+                            continue
 
-                    size = struct.unpack('<I', header_and_size[8:12])[0]
-                    rest = bus_serial.read(size)
-                    full_packet = header_and_size + rest
+                        size = struct.unpack('<I', header_and_size[8:12])[0]
+                        rest = bus_serial.read(size)
+                        full_packet = header_and_size + rest
 
-                    response = handle_request_packet(full_packet)
-                    if response:
-                        bus_serial.write(response)
-                        print(f"[BUS] Sent response of length {len(response)} bytes.")
-                    else:
-                        print("[BUS] No response generated")
-                except Exception as e:
-                    print(f"[BUS] Error handling packet: {e}")
+                        response = handle_request_packet(full_packet)
+                        if response:
+                            bus_serial.write(response)
+                            print(f"[BUS] Sent response of length {len(response)} bytes.")
+                        else:
+                            print("[BUS] No response generated.")
+                except (OSError, serial.SerialException) as e:
+                    print(f"[BUS] Serial error: {e}")
 
-            
             if time_iter_s > time_prev_sensors_s + PARAMS.DT_SENSORS_S:
                 sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
                 #grab the latest sensor measurements - helpful for some things, debugging
