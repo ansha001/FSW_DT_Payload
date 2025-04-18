@@ -3,12 +3,13 @@ class FSW_PARAMS:
         #TODO - make initialization read from json or similar
         self.DT_CHECK_S = 0.08          # time step between important checks
         self.DT_SENSORS_S = 0.1         # time step between reading sensors
-        self.DT_LOG_S  = 1.1              # time step between logs
-        self.DT_HEAT_S = 160             # time step between checking heater
+        self.DT_LOG_S  = 1.01           # time step between logs
+        self.DT_LOG2_S = 60             # time step between type 2 logs 
+        self.DT_HEAT_S = 160            # time step between checking heater
         self.DT_FAST_S = 1              # time step between fast loop of EKF
         self.DT_SLOW_S = 1000           # time step between slow loop of EKF
         self.CHG_LIMIT_V = 4.20         # voltage to stop charging
-        self.DIS_LIMIT_V = 2.90         # voltage to stop discharging
+        self.DIS_LIMIT_V = 2.75         # voltage to stop discharging
         self.FB_PULSE1_V = 3.10         # fallback voltage for 65% SOC
         self.FB_PULSE2_V = 3.00         # fallback voltage for 30% SOC
         self.SOC_PULSE1 = 0.65          # SOC to perform pulse 1
@@ -42,8 +43,9 @@ class FSW_PARAMS:
         self.CHG_VAL_INIT = 9
         self.DIS_VAL_INIT = 120
         self.R_SHUNT_OHMS = [1.0, 1.0, 1.0]
-        self.NUM_CYCLES_PER_TEST = 20    # typically 20
+        self.NUM_CYCLES_PER_TEST = 200    # typically 20
         
     def update_params():
         #TODO if we need to update the params in flight, this should write to the json file
         print('updating params')
+
