@@ -15,7 +15,7 @@ import math
 from battery_channel_class import battery_channel
 from FSW_PARAMS_class import FSW_PARAMS
 from FSW_ADDRS_class import FSW_ADDRS
-from fsw.packet_handler import (
+from packet_handler import (
     log_binary_packet,
     build_packet_type_1, build_packet_type_2, build_packet_type_3
 )
@@ -291,12 +291,14 @@ if __name__ == "__main__":
     #run initial setup
     init_GPIO()
     safe_board()
+    time.sleep(1)
     
     #TODO check memory to restart experiment at midpoint
     chg_val_prev = -1
     time_init_s = time.monotonic()
     time_iter_s = time_init_s
     time_prev_log_s  = time_iter_s
+    time_prev_log2_s = time_iter_s
     time_prev_heat_s = time_iter_s
     time_prev_fast_s = time_iter_s
     time_prev_slow_s = time_iter_s
@@ -346,15 +348,12 @@ if __name__ == "__main__":
                 volt_iter_v  = sensor_data[4:7]
                 curr_iter_ma = sensor_data[8:11]
                 time_prev_sensors_s = time_iter_s
-
-                payload_1 = build_packet_type_1(
-                time_s=time_iter_s,
-                voltages=[ch0.volt_v, ch1.volt_v, ch2.volt_v],
-                currents=[ch0.curr_ma, ch1.curr_ma, ch2.curr_ma],
-                temps=[ch0.temp_c, ch1.temp_c, ch2.temp_c]
-                )
-                log_binary_packet(1, payload_1)
-
+                
+                #check mode and state, update if necessary
+                ch0.channel_logic(time_iter_s, PARAMS)
+                ch1.channel_logic(time_iter_s, PARAMS)
+                ch2.channel_logic(time_iter_s, PARAMS)
+                  
                 for i, ch in enumerate([ch0, ch1, ch2]):
                     if ch.mode != last_mode[i]:
                         last_mode_switch[i] = time_iter_s
@@ -363,22 +362,7 @@ if __name__ == "__main__":
                 time_switches = [
                     int(time_iter_s - last_mode_switch[0]),
                     int(time_iter_s - last_mode_switch[1]),
-                    int(time_iter_s - last_mode_switch[2])
-                ]
-
-                payload_2 = build_packet_type_2(
-                    channels=[ch0, ch1, ch2],
-                    resets=0,
-                    time_switches=time_switches,
-                    cpu_temp=get_CPU_temperature(),
-                    cpu_volt=get_CPU_voltage()
-                )
-                log_binary_packet(2, payload_2)
-                
-                #check mode and state, update if necessary
-                ch0.channel_logic(time_iter_s, PARAMS)
-                ch1.channel_logic(time_iter_s, PARAMS)
-                ch2.channel_logic(time_iter_s, PARAMS)
+                    int(time_iter_s - last_mode_switch[2])]
                   
                 #overwrite logic for testing  
                   
@@ -397,7 +381,6 @@ if __name__ == "__main__":
                 #ch2.update_act = (ch2.chg_val == chg_val_prev)
                 #chg_val_prev = ch2.chg_val
                 
-                
                 #push those actuator values to the board
                 if ch0.update_act:
                     update_actuators(ch0)
@@ -411,6 +394,14 @@ if __name__ == "__main__":
                 #do logging things
                 #TODO write to memory to prepare for reset
                 log_sensor_data(time_iter_s, sensor_data, ch0, ch1, ch2)
+                
+                payload_1 = build_packet_type_1(
+                time_s=time_iter_s,
+                voltages=[ch0.volt_v, ch1.volt_v, ch2.volt_v],
+                currents=[ch0.curr_ma, ch1.curr_ma, ch2.curr_ma],
+                temps=[ch0.temp_c, ch1.temp_c, ch2.temp_c]
+                )
+                log_binary_packet(1, payload_1)
                 
                 print('Tempera: %5.2f, %5.2f, %5.2f' % (temp_iter_c[0], temp_iter_c[1], temp_iter_c[2]))
                 print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
@@ -435,21 +426,19 @@ if __name__ == "__main__":
                 if ch2.mode == 'CYCLE':
                     ch2.state_estimate(volt_iter_v[2], curr_iter_ma[2], time_iter_s)
                 
-                #print('heartbeat, fast loop')
-                time_prev_fast_s = time_iter_s
-                
-#             if time_iter_s > time_prev_slow_s + PARAMS.DT_SLOW_S:
-#                 #TODO - this might be a problem with shielding the slow EKF during RPT?
-#                 #do slow loop EKF things
-#                 ch0.state_estimate_slow(volt_iter_v[0], curr_iter_ma[0])
-#                 ch1.state_estimate_slow(volt_iter_v[1], curr_iter_ma[1])
-#                 ch2.state_estimate_slow(volt_iter_v[2], curr_iter_ma[2])
-#                 
-#                 print('heartbeat, slow EKF')
-#                 time_prev_slow_s = time_iter_s
-
                 payload_3 = build_packet_type_3(ch0, ch1, ch2)
                 log_binary_packet(3, payload_3)
+                #print('heartbeat, fast loop')
+                time_prev_fast_s = time_iter_s
+                           
+            if time_iter_s > time_prev_log2_s + PARAMS.DT_LOG2_S:
+                payload_2 = build_packet_type_2(
+                    channels=[ch0, ch1, ch2],
+                    resets=0,
+                    time_switches=time_switches,
+                    cpu_temp=get_CPU_temperature(),
+                    cpu_volt=get_CPU_voltage())
+                log_binary_packet(2, payload_2)
 
             if time_iter_s > time_prev_heat_s + PARAMS.DT_HEAT_S:
                 #check if heater should be on
