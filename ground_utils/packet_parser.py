@@ -103,3 +103,12 @@ def parse_bin_file(file_path):
             print(f"Parsed Packet Type {msg_type}:\n", parsed)
             print("-"*60)
 
+def parse_folder(folder_path):
+    for fname in sorted(os.listdir(folder_path)):
+        if fname.endswith(".bin"):
+            print(f"--- Parsing {fname} ---")
+            parse_bin_file(os.path.join(folder_path, fname))
+
+if __name__ == '__main__':
+    folder = "log_files"  
+    parse_folder(folder)

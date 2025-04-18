@@ -12,13 +12,23 @@ import RPi.GPIO as GPIO
 import subprocess
 import statistics
 import math
+import struct
 from battery_channel_class import battery_channel
 from FSW_PARAMS_class import FSW_PARAMS
 from FSW_ADDRS_class import FSW_ADDRS
 from packet_handler import (
     log_binary_packet,
+    handle_request_packet,
     build_packet_type_1, build_packet_type_2, build_packet_type_3
 )
+
+# Init serial port to communicate with the mock bus
+try:
+    bus_serial = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.1)
+    print("[INFO] Bus serial connection established")
+except Exception as e:
+    print(f"[ERROR] Failed to open serial port for bus: {e}")
+    bus_serial = None
 
 # load addresses
 ADDRS = FSW_ADDRS()
@@ -340,6 +350,28 @@ if __name__ == "__main__":
                 check_for_safety(temp_iter_c)
                 check_for_data_request()
                 time_prev_check_s = time_iter_s
+
+            # Handle incoming data request from bus
+            if bus_serial and bus_serial.in_waiting >= 17:
+                try:
+                    header_and_size = bus_serial.read(12)
+                    if header_and_size[:8] != b'\x30\x20\x30\x20\x30\x20\x30\x20':
+                        print("[BUS] Invalid packet header received.")
+                        continue
+
+                    size = struct.unpack('<I', header_and_size[8:12])[0]
+                    rest = bus_serial.read(size)
+                    full_packet = header_and_size + rest
+
+                    response = handle_request_packet(full_packet)
+                    if response:
+                        bus_serial.write(response)
+                        print(f"[BUS] Sent response of length {len(response)} bytes.")
+                    else:
+                        print("[BUS] No response generated")
+                except Exception as e:
+                    print(f"[BUS] Error handling packet: {e}")
+
             
             if time_iter_s > time_prev_sensors_s + PARAMS.DT_SENSORS_S:
                 sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)

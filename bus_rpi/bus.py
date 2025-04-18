@@ -2,11 +2,12 @@ import serial
 import struct
 import zlib
 import time
+import os
 
 # Constants
 HEADER = b'\x30\x20\x30\x20\x30\x20\x30\x20'  # 64-bit - 0x3020302030203020
 SERIAL_PORT = '/dev/ttyUSB0'           
-BAUD_RATE = 9600
+BAUD_RATE = 115200
 TIMEOUT_SEC = 1
 
 # Message Types
@@ -66,7 +67,7 @@ def send_request(ser: serial.Serial, message_type: int = MESSAGE_TYPE_SEND_NEXT,
     ser.write(packet)
     print(f"[INFO] Sent packet with type={message_type}, argument='{argument}'")
 
-def read_response(ser: serial.Serial):
+def read_response(ser: serial.Serial, last_argument_sent=None):
     if ser.in_waiting >= 17:
         header_and_size = ser.read(12)
         if header_and_size[:8] != HEADER:
@@ -81,6 +82,18 @@ def read_response(ser: serial.Serial):
         try:
             message_type, payload = parse_response_packet(packet)
             print(f"[RECEIVED] Type: {message_type}, Payload Length: {len(payload)} bytes")
+
+            if last_argument_sent and '_' in last_argument_sent:
+                filename = f"{last_argument_sent}.bin"
+            else:
+                # fallback to a timestamp if arg not usable
+                filename = f"{message_type}_{int(time.time())}.bin"
+
+            folder = f"received_logs/type{message_type}"
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, filename), 'wb') as f:
+                f.write(packet)
+
         except Exception as e:
             print(f"[ERROR] Failed to parse response: {e}")
     else:
@@ -90,22 +103,26 @@ def main():
     print(f"[INFO] Connecting to serial port {SERIAL_PORT} at {BAUD_RATE} baud")
     try:
         with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=TIMEOUT_SEC) as ser:
+            last_argument_sent = None
             while True:
-                    user_input = input("Enter command (n=next, r=resend, s <type>_<index>): ").strip()
-                    if user_input == 'r':
-                        send_request(ser, MESSAGE_TYPE_RESEND_LAST)
-                    elif user_input == 'n':
-                        send_request(ser, MESSAGE_TYPE_SEND_NEXT)
-                    elif user_input.startswith("s "):
-                        argument = user_input.split(" ", 1)[1]
-                        send_request(ser, MESSAGE_TYPE_REQUEST_SPECIFIC, argument=argument)
-                    else:
-                        print("[INFO] Unknown command. Use 'n', 'r', or 's <type>_<index>'")
-                        continue
+                user_input = input("Enter command (n=next, r=resend, s <type>_<index>): ").strip()
+                if user_input == 'r':
+                    send_request(ser, MESSAGE_TYPE_RESEND_LAST)
+                    last_argument_sent = None
+                elif user_input == 'n':
+                    send_request(ser, MESSAGE_TYPE_SEND_NEXT)
+                    last_argument_sent = None
+                elif user_input.startswith("s "):
+                    argument = user_input.split(" ", 1)[1]
+                    send_request(ser, MESSAGE_TYPE_REQUEST_SPECIFIC, argument=argument)
+                    last_argument_sent = argument
+                else:
+                    print("[INFO] Unknown command. Use 'n', 'r', or 's <type>_<index>'")
+                    continue
 
-                    time.sleep(1)
-                    read_response(ser)
-                    time.sleep(5)
+                time.sleep(1)
+                read_response(ser, last_argument_sent=last_argument_sent)
+                time.sleep(5)
 
     except serial.SerialException as e:
         print(f"[ERROR] Serial communication error: {e}")

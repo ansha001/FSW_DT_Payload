@@ -62,7 +62,6 @@ def increment_pointer(msg_type: int):
     index = read_pointer(msg_type, 'current') + 1
     write_pointer(msg_type, index, 'current')
 
-
 def log_binary_packet(msg_type: int, payload: bytes):
     chunk_file = get_current_chunk_file(msg_type)
     entry = build_response_packet(msg_type, payload)
@@ -83,6 +82,8 @@ def log_binary_packet(msg_type: int, payload: bytes):
 
     if count >= chunk_limit:
         increment_pointer(msg_type)
+
+# Build packets for message types
 
 def build_packet_type_1(time_s: float, voltages, currents, temps) -> bytes:
     return struct.pack('<f3f3f3f', time_s, *voltages, *currents, *temps)
@@ -148,7 +149,6 @@ def parse_request_packet(packet: bytes):
     if recv_crc != calc_crc:
         raise ValueError("Checksum mismatch")
     return msg_type, payload
-
 
 GLOBAL_POINTER_PATH = os.path.join(LOG_BASE_DIR, '.last_sent_msg_type')
 
@@ -234,8 +234,6 @@ def handle_request_packet(packet: bytes) -> bytes:
         print("Next packet request received.")
         return get_next_packet_to_send()
 
-    
-    
 def parse_specific_request_argument(payload: bytes):
     try:
         decoded = payload.decode('utf-8')
