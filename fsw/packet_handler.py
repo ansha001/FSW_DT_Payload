@@ -101,36 +101,42 @@ def build_packet_type_2(channels, resets, time_switches, cpu_temp: float, cpu_vo
     )
 
 def build_packet_type_3(ch0, ch1, ch2) -> bytes:
+#     print(ch0.est_cov_state)
+#     print(ch0.est_cov_state[0, 0])
+#     print(ch0.est_cov_state[1, 1])
     return struct.pack(
-        '<' + '2f4f4f4f4f' * 3,
-        ch0.estimated_soc,
-        ch0.estimated_voltage,
-        *ch0.cov_state,
-        ch0.capacity,
-        ch0.ohmic_resistance,
-        ch0.capacitance,
-        ch0.resistance,
-        *ch0.cov_param,
+        #'<' + '2f4f4f4f4f' * 3,
+        '<' + '1f1f1f1f1f1f' * 3,
+        float(ch0.est_soc),
+        float(ch0.est_volt_v),
+        float(ch0.est_cov_state[0,0]),
+        float(ch0.est_cov_state[1,1]),
+        float(ch0.est_capacity_as),
+        float(ch0.est_cov_param),
+        #ch0.ohmic_resistance,
+        #ch0.capacitance,
+        #ch0.resistance,
+        
+        float(ch1.est_soc),
+        float(ch1.est_volt_v),
+        float(ch1.est_cov_state[0,0]),
+        float(ch1.est_cov_state[1,1]),
+        float(ch1.est_capacity_as),
+        float(ch1.est_cov_param),
+        #ch1.ohmic_resistance,
+        #ch1.capacitance,
+        #ch1.resistance,
 
-        ch1.estimated_soc,
-        ch1.estimated_voltage,
-        *ch1.cov_state,
-        ch1.capacity,
-        ch1.ohmic_resistance,
-        ch1.capacitance,
-        ch1.resistance,
-        *ch1.cov_param,
-
-        ch2.estimated_soc,
-        ch2.estimated_voltage,
-        *ch2.cov_state,
-        ch2.capacity,
-        ch2.ohmic_resistance,
-        ch2.capacitance,
-        ch2.resistance,
-        *ch2.cov_param,
-    )
-
+        float(ch2.est_soc),
+        float(ch2.est_volt_v),
+        float(ch2.est_cov_state[0,0]),
+        float(ch2.est_cov_state[1,1]),
+        float(ch2.est_capacity_as),
+        float(ch2.est_cov_param)
+        #ch2.ohmic_resistance,
+        #ch2.capacitance,
+        #ch2.resistance
+        )
 
 def parse_request_packet(packet: bytes):
     if len(packet) < 17 or packet[:8] != HEADER:
@@ -239,3 +245,4 @@ def parse_specific_request_argument(payload: bytes):
         print("[ERROR] Invalid specific packet argument. Expected something like '2_3'")
         return None, None
     
+
