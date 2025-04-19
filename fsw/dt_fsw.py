@@ -49,6 +49,24 @@ with open(file_name, 'w', encoding='UTF8', newline='') as f:
     writer = csv.writer(f)
     writer.writerow(header)
 
+STATE_CODES = {
+    'CHG': 0,
+    'DIS': 1,
+    'REST': 2,
+    'CHG_REST': 3,
+    'DIS_REST': 4,
+    'CHG_LOW': 5,
+    'DIS_LOW': 6,
+    'UNKNOWN': 255
+}
+
+MODE_CODES = {
+    'CYCLE': 0,
+    'TEST': 1,
+    'UNKNOWN': 255
+}
+
+
 def init_GPIO():
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(ADDRS.EN_CHG_GPIO_LIST[0], GPIO.OUT)
@@ -482,8 +500,8 @@ if __name__ == "__main__":
                     0,  # replace with actual reset count
                     time_switches[0], time_switches[1], time_switches[2],
                     ch0.test_sequence, ch1.test_sequence, ch2.test_sequence,
-                    ch0.state, ch1.state, ch2.state,
-                    ch0.mode, ch1.mode, ch2.mode,
+                    STATE_CODES.get(ch0.state, 255), STATE_CODES.get(ch1.state, 255), STATE_CODES.get(ch2.state, 255),  
+                    MODE_CODES.get(ch0.mode, 255), MODE_CODES.get(ch1.mode, 255), MODE_CODES.get(ch2.mode, 255),  
                     get_CPU_temperature(),
                     get_CPU_voltage()
                 )
