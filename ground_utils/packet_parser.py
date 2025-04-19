@@ -21,15 +21,14 @@ MODE_NAMES = {
 }
 
 def parse_group_1_packet(payload: bytes):
-    time_s, *values = struct.unpack('<f3f3f3f', payload)
-    voltages = values[0:3]
-    currents = values[3:6]
-    temps = values[6:9]
+    if len(payload) != 20:  # 10 float16 values = 20 bytes
+        raise ValueError("Payload size for group 1 must be 20 bytes")
+    values = struct.unpack('<10e', payload)
     return {
-        "time": time_s,
-        "voltages": voltages,
-        "currents": currents,
-        "temps": temps
+        "time": values[0],
+        "voltages": values[1:4],
+        "currents": values[4:7],
+        "temps": values[7:10]
     }
 
 def parse_group_2_packet(payload: bytes):
@@ -56,6 +55,8 @@ def parse_group_2_packet(payload: bytes):
     }
 
 def parse_group_3_packet(payload: bytes):
+    if len(payload) != 74:  # 1 float16 (2 bytes) + 18 floats (72 bytes)
+        raise ValueError("Payload size for group 3 must be 74 bytes")
     time_s = struct.unpack('<e', payload[:2])[0]
     estimator_data = struct.unpack('<18f', payload[2:])
     channels = []
@@ -76,9 +77,10 @@ def parse_packet(packet: bytes):
         raise ValueError("Invalid packet header")
     size = struct.unpack('<I', packet[8:12])[0]
     group_id = struct.unpack('<B', packet[12:13])[0]
-    payload = packet[13:13+size-5]  # size excludes header but includes type + CRC
-    crc_recv = struct.unpack('<I', packet[13+size-5:13+size-1])[0]
-    return group_id, payload
+    index = struct.unpack('<I', packet[13:17])[0]  # new index field
+    payload = packet[17:17+size-8]  # skip 1 byte group_id + 4 byte index + 4 byte CRC using size
+    crc_recv = struct.unpack('<I', packet[17+size-8:17+size-4])[0]
+    return group_id, index, payload
 
 def parse_bin_file(file_path):
     with open(file_path, 'rb') as f:
@@ -91,7 +93,7 @@ def parse_bin_file(file_path):
                 break
             size = struct.unpack('<I', size_bytes)[0]
             packet = header + size_bytes + f.read(size)
-            group_id, payload = parse_packet(packet)
+            group_id, index, payload = parse_packet(packet)
             if group_id == 1:
                 parsed = parse_group_1_packet(payload)
             elif group_id == 2:
@@ -100,7 +102,7 @@ def parse_bin_file(file_path):
                 parsed = parse_group_3_packet(payload)
             else:
                 parsed = {"group_id": group_id, "raw_payload": payload.hex()}
-            print(f"Parsed Group {group_id}:", parsed)
+            print(f"Parsed Group {group_id}, Index {index}:", parsed)
             print("-"*60)
 
 def parse_folder(folder_path):

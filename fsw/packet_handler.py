@@ -68,18 +68,24 @@ def get_group_folder(group_id: int) -> str:
     os.makedirs(folder, exist_ok=True)
     return folder
 
-# generates the next filename to write
-def get_next_group_file(group_id: int) -> str:
+def log_binary_packet(group_id: int, payload: bytes):
     folder = get_group_folder(group_id)
     index = get_latest_index(group_id) + 1
-    return os.path.join(folder, f"{group_id}_{index}.bin")
+    filename = f"{group_id}_{index}.bin"
+    full_path = os.path.join(folder, filename)
 
-def log_binary_packet(group_id: int, payload: bytes):
-    group_file = get_next_group_file(group_id)
-    entry = build_response_packet(group_id, payload)
-    with open(group_file, 'wb') as f:
+    # Include index inside the payload
+    index_bytes = struct.pack('<I', index) # pack index as 4 bytes (uint32)
+    payload_with_index = index_bytes + payload
+
+    # Wrap into packet with group_id as message type
+    entry = build_response_packet(group_id, payload_with_index)
+
+    with open(full_path, 'wb') as f:
         f.write(entry)
-    print(f"[LOG] Group {group_id}: Written to {group_file}")
+
+    print(f"[LOG] Group {group_id}: Written to {full_path}")
+
 
 # Build packets for message groups
 def build_packet_group_1(reading_list):
