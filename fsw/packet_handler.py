@@ -15,6 +15,7 @@ CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
 with open(CONFIG_FILE, 'r') as f:
     CONFIG = json.load(f)
 CHUNK_ENTRIES = CONFIG.get("chunk_entries", {})
+print("[DEBUG] Loaded chunk entries:", CHUNK_ENTRIES)
 
 # CRC and Packet Builder
 def compute_crc32(data: bytes) -> int:
@@ -66,10 +67,12 @@ def log_binary_packet(msg_type: int, payload: bytes):
     chunk_file = get_current_chunk_file(msg_type)
     entry = build_response_packet(msg_type, payload)
 
-    with open(chunk_file, 'ab') as f:
+#    with open(chunk_file, 'ab') as f:
+  with open(chunk_file, 'wb') as f:
         f.write(entry)
 
-    chunk_limit = CHUNK_ENTRIES.get(f"type{msg_type}", 20)
+    chunk_limit = CHUNK_ENTRIES.get(f"type{msg_type}", 5)
+    print(f"[DEBUG] Using chunk limit for type{msg_type}: {chunk_limit}")
     with open(chunk_file, 'rb') as f:
         count = 0
         while f.read(8):
@@ -195,6 +198,7 @@ def get_next_packet_to_send() -> bytes:
 
                 write_pointer(msg_type, last_sent + 1, 'last_sent')
                 write_global_pointer(msg_type)
+                print(f"[DEBUG] last_sent = {last_sent}, latest = {latest} for msg_type {msg_type}")
                 return data
     return None  # No packets ready
 
