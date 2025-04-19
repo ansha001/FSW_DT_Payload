@@ -25,6 +25,8 @@ from packet_handler import (
 # Init serial port to communicate with the mock bus
 try:
     bus_serial = serial.Serial('/dev/serial0', 115200, timeout=0.1)
+    bus_serial.flushInput()
+    bus_serial.flushOutput()
     print("[INFO] Bus serial connection established")
 except Exception as e:
     print(f"[ERROR] Failed to open serial port for bus: {e}")
@@ -351,10 +353,13 @@ if __name__ == "__main__":
                 check_for_data_request()
                 time_prev_check_s = time_iter_s
 
+            # Handle incoming data request from bus
             if bus_serial:
                 try:
-                    waiting_bytes = bus_serial.in_waiting  
+                    waiting_bytes = bus_serial.in_waiting
+                
                     if waiting_bytes >= 17:
+                        print("[PAYLOAD] Bus request received!")
                         header_and_size = bus_serial.read(12)
                         if header_and_size[:8] != b'\x30\x20\x30\x20\x30\x20\x30\x20':
                             print("[BUS] Invalid packet header received.")
@@ -363,16 +368,19 @@ if __name__ == "__main__":
                         size = struct.unpack('<I', header_and_size[8:12])[0]
                         rest = bus_serial.read(size)
                         full_packet = header_and_size + rest
-
+                        print("[PAYLOAD] Raw request:", full_packet.hex())
                         response = handle_request_packet(full_packet)
                         if response:
                             bus_serial.write(response)
+                            bus_serial.flush()
                             print(f"[BUS] Sent response of length {len(response)} bytes.")
+                            print("[BUS DEBUG] Response hex:", response.hex())
                         else:
                             print("[BUS] No response generated.")
                 except (OSError, serial.SerialException) as e:
                     print(f"[BUS] Serial error: {e}")
 
+            
             if time_iter_s > time_prev_sensors_s + PARAMS.DT_SENSORS_S:
                 sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
                 #grab the latest sensor measurements - helpful for some things, debugging
@@ -414,12 +422,12 @@ if __name__ == "__main__":
                 #chg_val_prev = ch2.chg_val
                 
                 #push those actuator values to the board
-                if ch0.update_act:
-                    update_actuators(ch0)
-                if ch1.update_act:
-                    update_actuators(ch1)
-                if ch2.update_act:
-                    update_actuators(ch2)
+#                if ch0.update_act:
+#                    update_actuators(ch0)
+#                if ch1.update_act:
+#                    update_actuators(ch1)
+#                if ch2.update_act:
+#                    update_actuators(ch2)
             
             pulse = ch0.pulse_state or ch1.pulse_state or ch2.pulse_state
             if (time_iter_s > time_prev_log_s + PARAMS.DT_LOG_S) or (pulse and time_iter_s > time_prev_log_s + PARAMS.DT_SENSORS_S):
