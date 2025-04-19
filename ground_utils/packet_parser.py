@@ -110,5 +110,7 @@ def parse_folder(folder_path):
             parse_bin_file(os.path.join(folder_path, fname))
 
 if __name__ == '__main__':
-    folder = "log_files"  
-    parse_folder(folder)
+#    folder = "log_files"  
+#    parse_folder(folder)
+    file_path = input("Enter file_path:").strip()
+    parse_bin_file(file_path)
