@@ -12,6 +12,8 @@ MAX_FILE_INDEX = 10**6
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_BASE_DIR = os.path.join(BASE_DIR, 'log')
 CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
+BUFFER_BACKUP_FILE = os.path.join(LOG_BASE_DIR, 'buffers_backup.json')
+
 
 with open(CONFIG_FILE, 'r') as f:
     CONFIG = json.load(f)
@@ -22,6 +24,30 @@ reading_buffers = {
     2: [],
     3: []
 }
+
+# Load persisted buffer if it exists
+def load_buffer_backup():
+    if os.path.exists(BUFFER_BACKUP_FILE):
+        try:
+            with open(BUFFER_BACKUP_FILE, 'r') as f:
+                data = json.load(f)
+                for key in reading_buffers:
+                    reading_buffers[key] = data.get(str(key), [])
+            print("[INFO] Buffer state restored from backup.")
+        except Exception as e:
+            print(f"[ERROR] Failed to load buffer backup: {e}")
+
+# Save current buffer to backup file
+# to be Called periodically or before power cycle
+def save_buffer_backup():
+    try:
+        with open(BUFFER_BACKUP_FILE, 'w') as f:
+            json.dump(reading_buffers, f)
+        print("[INFO] Buffer state saved.")
+    except Exception as e:
+        print(f"[ERROR] Failed to save buffer backup: {e}")
+
+load_buffer_backup()
 
 # CRC and Packet Builder
 def compute_crc32(data: bytes) -> int:

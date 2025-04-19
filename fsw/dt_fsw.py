@@ -17,8 +17,7 @@ from battery_channel_class import battery_channel
 from FSW_PARAMS_class import FSW_PARAMS
 from FSW_ADDRS_class import FSW_ADDRS
 from packet_handler import (
-    handle_request_packet,
-    build_combined_packet, buffer_and_log_reading,
+    handle_request_packet, buffer_and_log_reading,
 )
 
 # Init serial port to communicate with the mock bus
