@@ -1,7 +1,7 @@
 {
-  "chunk_entries": {
-    "type1": 10,
-    "type2": 10,
-    "type3": 7
+  "buffer_entries": {
+    "group1": 9,
+    "group2": 7,
+    "group3": 2
   }
 }
