@@ -109,8 +109,7 @@ def parse_packet(packet: bytes):
     size = struct.unpack('<I', packet[8:12])[0]
     group_id = struct.unpack('<B', packet[12:13])[0]
     index = struct.unpack('<I', packet[13:17])[0]  # new index field
-    full_payload = packet[17:17+size-5]  
-    payload = full_payload[4:]
+    payload = packet[17:17+size-8]  
     return group_id, index, payload
 
 def parse_bin_file(file_path):

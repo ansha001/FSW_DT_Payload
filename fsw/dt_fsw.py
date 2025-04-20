@@ -438,12 +438,12 @@ if __name__ == "__main__":
                 #chg_val_prev = ch2.chg_val
                 
                 #push those actuator values to the board
-#                if ch0.update_act:
-#                    update_actuators(ch0)
-#                if ch1.update_act:
-#                    update_actuators(ch1)
-#                if ch2.update_act:
-#                    update_actuators(ch2)
+                if ch0.update_act:
+                    update_actuators(ch0)
+                if ch1.update_act:
+                    update_actuators(ch1)
+                if ch2.update_act:
+                    update_actuators(ch2)
             
             pulse = ch0.pulse_state or ch1.pulse_state or ch2.pulse_state
             if (time_iter_s > time_prev_log_s + PARAMS.DT_LOG_S) or (pulse and time_iter_s > time_prev_log_s + PARAMS.DT_SENSORS_S):
@@ -505,8 +505,9 @@ if __name__ == "__main__":
                     get_CPU_temperature(),
                     get_CPU_voltage()
                 )
+                print(f"Logging group 2 at {reading_2[0]:.2f}s")
                 buffer_and_log_reading(2, reading_2)
-
+                time_prev_log2_s = time_iter_s
 
             if time_iter_s > time_prev_heat_s + PARAMS.DT_HEAT_S:
                 #check if heater should be on
