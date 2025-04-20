@@ -15,6 +15,7 @@ MESSAGE_TYPE_RESEND_LAST = 0
 MESSAGE_TYPE_SEND_NEXT = 1  # Default usage
 MESSAGE_TYPE_REQUEST_SPECIFIC = 2
 MESSAGE_TYPE_UPDATE_PARAMS = 3
+MESSAGE_TYPE_SHUTDOWN = 4
 
 def compute_crc32(data: bytes) -> int:
     return zlib.crc32(data)
@@ -101,7 +102,7 @@ def main():
         with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=TIMEOUT_SEC) as ser:
             last_argument_sent = None
             while True:
-                user_input = input("Enter command (n=next, r=resend, s <type>_<index>): ").strip()
+                user_input = input("Enter command (n=next, r=resend, s <type>_<index>, k for kill): ").strip()
                 if user_input == 'r':
                     send_request(ser, MESSAGE_TYPE_RESEND_LAST)
                     last_argument_sent = None
@@ -112,6 +113,9 @@ def main():
                     argument = user_input.split(" ", 1)[1]
                     send_request(ser, MESSAGE_TYPE_REQUEST_SPECIFIC, argument=argument)
                     last_argument_sent = argument
+                elif user_input == 'k':
+                    send_request(ser, MESSAGE_TYPE_SHUTDOWN)
+                    last_argument_sent = None
                 else:
                     print("[INFO] Unknown command. Use 'n', 'r', or 's <type>_<index>'")
                     continue
