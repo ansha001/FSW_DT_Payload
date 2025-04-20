@@ -327,6 +327,7 @@ if __name__ == "__main__":
     time_iter_s = time_init_s
     time_prev_log_s  = time_iter_s
     time_prev_log2_s = time_iter_s
+    time_prev_log3_s = time_iter_s
     time_prev_heat_s = time_iter_s
     time_prev_fast_s = time_iter_s
     time_prev_slow_s = time_iter_s
@@ -390,7 +391,6 @@ if __name__ == "__main__":
                             bus_serial.write(response)
                             bus_serial.flush()
                             print(f"[BUS] Sent response of length {len(response)} bytes.")
-                            print("[BUS DEBUG] Response hex:", response.hex())
                         else:
                             print("[BUS] No response generated.")
                 except (OSError, serial.SerialException) as e:
@@ -448,7 +448,6 @@ if __name__ == "__main__":
             pulse = ch0.pulse_state or ch1.pulse_state or ch2.pulse_state
             if (time_iter_s > time_prev_log_s + PARAMS.DT_LOG_S) or (pulse and time_iter_s > time_prev_log_s + PARAMS.DT_SENSORS_S):
                 #do logging things
-                #TODO write to memory to prepare for reset
                 log_sensor_data(time_iter_s, sensor_data, ch0, ch1, ch2)
                 
                 reading_1 = (
@@ -481,23 +480,13 @@ if __name__ == "__main__":
                     ch1.state_estimate(volt_iter_v[1], curr_iter_ma[1], time_iter_s)
                 if ch2.mode == 'CYCLE':
                     ch2.state_estimate(volt_iter_v[2], curr_iter_ma[2], time_iter_s)
-                
-                reading_3 = (
-                    time_iter_s,
-                    ch0.est_soc, ch0.est_volt_v, ch0.est_cov_state[0, 0], ch0.est_cov_state[1, 1], ch0.est_capacity_as, ch0.est_cov_param,
-                    ch1.est_soc, ch1.est_volt_v, ch1.est_cov_state[0, 0], ch1.est_cov_state[1, 1], ch1.est_capacity_as, ch1.est_cov_param,
-                    ch2.est_soc, ch2.est_volt_v, ch2.est_cov_state[0, 0], ch2.est_cov_state[1, 1], ch2.est_capacity_as, ch2.est_cov_param,
-                )
-                buffer_and_log_reading(3, reading_3)
-
-                #print('heartbeat, fast loop')
                 time_prev_fast_s = time_iter_s
                 
             if time_iter_s > time_prev_log2_s + PARAMS.DT_LOG2_S:
                 reading_2 = (
                     time_iter_s,
                     ch0.cycle_count, ch1.cycle_count, ch2.cycle_count,
-                    0,  # replace with actual reset count
+                    0,  # TODO replace with actual reset count
                     time_switches[0], time_switches[1], time_switches[2],
                     ch0.test_sequence, ch1.test_sequence, ch2.test_sequence,
                     STATE_CODES.get(ch0.state, 255), STATE_CODES.get(ch1.state, 255), STATE_CODES.get(ch2.state, 255),  
@@ -509,14 +498,22 @@ if __name__ == "__main__":
                 buffer_and_log_reading(2, reading_2)
                 time_prev_log2_s = time_iter_s
 
+            if time_iter_s > time_prev_log3_s + PARAMS.DT_LOG3_S:
+                reading_3 = (
+                    time_iter_s,
+                    ch0.est_soc, ch0.est_volt_v, ch0.est_cov_state[0, 0], ch0.est_cov_state[1, 1], ch0.est_capacity_as, ch0.est_cov_param,
+                    ch1.est_soc, ch1.est_volt_v, ch1.est_cov_state[0, 0], ch1.est_cov_state[1, 1], ch1.est_capacity_as, ch1.est_cov_param,
+                    ch2.est_soc, ch2.est_volt_v, ch2.est_cov_state[0, 0], ch2.est_cov_state[1, 1], ch2.est_capacity_as, ch2.est_cov_param,
+                )
+                buffer_and_log_reading(3, reading_3)
+                time_prev_log3_s = time_iter_s
+                
             if time_iter_s > time_prev_heat_s + PARAMS.DT_HEAT_S:
                 #check if heater should be on
                 if statistics.median(temp_iter_c) < PARAMS.TEMP_HEATER_ON_C:
                     GPIO.output(ADDRS.EN_HEATER_GPIO, GPIO.HIGH)
                 elif statistics.median(temp_iter_c) > PARAMS.TEMP_HEATER_OFF_C:
                     GPIO.output(ADDRS.EN_HEATER_GPIO, GPIO.LOW)
-                
-                #print('heartbeat, heater')
                 time_prev_heat_s = time_iter_s
     
     except (KeyboardInterrupt):
