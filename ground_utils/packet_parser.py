@@ -52,21 +52,24 @@ def parse_group_1_packet(payload: bytes):
     return parsed_entries
 
 def parse_group_2_packet(payload: bytes):
-    entry_size = 2 + struct.calcsize('<3B H 3H 3B 3B 3B') + 4  # time + packed + 2 float16
-    total_entries = len(payload) // entry_size
+    entry_size = struct.calcsize('<3e 3B H 3H 3B 3B 3B')  # 3 float16s + rest
     parsed_entries = []
+    total_entries = len(payload) // entry_size
 
     for i in range(total_entries):
-        entry = payload[i*entry_size:(i+1)*entry_size]
-        time_s = struct.unpack('<e', entry[:2])[0]
-        unpacked = struct.unpack('<3B H 3H 3B 3B 3B', entry[2:-4])
+        entry = payload[i * entry_size:(i + 1) * entry_size]
+
+        # first 3 float16 values: time, cpu_temp, cpu_volt
+        time_s, cpu_temp, cpu_volt = struct.unpack('<3e', entry[:6])
+        # int part
+        unpacked = struct.unpack('<3B H 3H 3B 3B 3B', entry[6:])
+
         cycle_counts = unpacked[0:3]
         resets = unpacked[3]
         time_switches = unpacked[4:7]
         test_sequences = unpacked[7:10]
         state_codes = unpacked[10:13]
         mode_codes = unpacked[13:16]
-        cpu_temp, cpu_volt = struct.unpack('<2e', entry[-4:])
 
         parsed_entries.append({
             "time": time_s,
@@ -83,15 +86,15 @@ def parse_group_2_packet(payload: bytes):
     return parsed_entries
 
 def parse_group_3_packet(payload: bytes):
-    entry_size = 2 + struct.calcsize('<18f')  # timestamp + 18 float32s
+    entry_size = struct.calcsize('<e18f')
     total_entries = len(payload) // entry_size
     parsed_entries = []
 
     for i in range(total_entries):
-        entry = payload[i*entry_size:(i+1)*entry_size]
-        time_s = struct.unpack('<e', entry[:2])[0]
-        estimator_data = struct.unpack('<18f', entry[2:])
+        entry = payload[i * entry_size : (i + 1) * entry_size]
+        time_s, *estimator_data = struct.unpack('<e18f', entry)
         channels = []
+    
         for j in range(3):
             offset = j * 6
             channels.append({
@@ -100,7 +103,7 @@ def parse_group_3_packet(payload: bytes):
                 "cov_state_00": estimator_data[offset + 2],
                 "cov_state_11": estimator_data[offset + 3],
                 "capacity": estimator_data[offset + 4],
-                "cov_param": estimator_data[offset + 5]
+                "cov_param": estimator_data[offset + 5],
             })
         parsed_entries.append({"time": time_s, "channels": channels})
 
