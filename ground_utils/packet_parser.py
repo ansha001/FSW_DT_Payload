@@ -1,6 +1,8 @@
 import struct
 import os
 import json
+import csv
+from collections import defaultdict
 
 HEADER = b'\x30\x20\x30\x20\x30\x20\x30\x20'
 
@@ -21,8 +23,9 @@ MODE_NAMES = {
     255: 'UNKNOWN'
 }
 
-# Load buffer configuration to determine entry count
-CONFIG_FILE = "config.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
+
 with open(CONFIG_FILE, 'r') as f:
     config = json.load(f)
 BUFFER_ENTRIES = {
@@ -124,6 +127,7 @@ def parse_bin_file(file_path):
             size = struct.unpack('<I', size_bytes)[0]
             packet = header + size_bytes + f.read(size)
             group_id, index, payload = parse_packet(packet)
+
             if group_id == 1:
                 parsed = parse_group_1_packet(payload)
             elif group_id == 2:
@@ -131,9 +135,80 @@ def parse_bin_file(file_path):
             elif group_id == 3:
                 parsed = parse_group_3_packet(payload)
             else:
-                parsed = {"group_id": group_id, "raw_payload": payload.hex()}
-            print(f"Parsed Group {group_id}, Index {index}:", parsed)
-            print("-"*60)
+                parsed = None  # Unknown group
+
+            if parsed is not None:
+                print(f"Parsed Group {group_id}, Index {index}: {parsed}")
+                write_csv(group_id, parsed)
+            else:
+                print(f"Unknown group {group_id}, skipping")
+            print("-" * 60)
+
+
+def write_csv(group_id, entries, output_folder='parsed_csv'):
+    os.makedirs(output_folder, exist_ok=True)
+    csv_path = os.path.join(output_folder, f"group{group_id}_parsed.csv")
+    print(f"Writing {len(entries)} entries to {csv_path}")
+
+    if not entries:
+        return  # Nothing to write
+
+    file_exists = os.path.exists(csv_path)
+
+    with open(csv_path, mode='a', newline='') as f:
+        writer = csv.writer(f)
+
+        # Write header only if file didn't exist
+        if not file_exists:
+            if group_id == 1:
+                writer.writerow(['time', 'v0', 'v1', 'v2', 'c0', 'c1', 'c2', 't0', 't1', 't2'])
+            elif group_id == 2:
+                writer.writerow([
+                    'time', 'cycle0', 'cycle1', 'cycle2', 'resets',
+                    'time_switch0', 'time_switch1', 'time_switch2',
+                    'test_seq0', 'test_seq1', 'test_seq2',
+                    'state0', 'state1', 'state2',
+                    'mode0', 'mode1', 'mode2',
+                    'cpu_temp', 'cpu_volt'
+                ])
+            elif group_id == 3:
+                writer.writerow(['time'] + [
+                    f"ch{ch}_{field}"
+                    for ch in range(3)
+                    for field in ['soc', 'volt', 'cov00', 'cov11', 'cap', 'covp']
+                ])
+
+        # Write the actual data
+        for entry in entries:
+            if group_id == 1:
+                writer.writerow([
+                    entry["time"],
+                    *entry["voltages"],
+                    *entry["currents"],
+                    *entry["temps"]
+                ])
+            elif group_id == 2:
+                writer.writerow([
+                    entry['time'],
+                    *entry['cycle_counts'],
+                    entry['resets'],
+                    *entry['time_switches'],
+                    *entry['test_sequences'],
+                    *entry['states'],
+                    *entry['modes'],
+                    entry['cpu_temp'],
+                    entry['cpu_volt']
+                ])
+            elif group_id == 3:
+                flat = []
+                for ch in entry['channels']:
+                    flat.extend([
+                        ch["estimated_soc"], ch["estimated_voltage"],
+                        ch["cov_state_00"], ch["cov_state_11"],
+                        ch["capacity"], ch["cov_param"]
+                    ])
+                writer.writerow([entry["time"]] + flat)
+
 
 def parse_folder(folder_path):
     for fname in sorted(os.listdir(folder_path)):
@@ -143,4 +218,4 @@ def parse_folder(folder_path):
 
 if __name__ == '__main__':
     file_path = input("Enter file_path:").strip()
-    parse_bin_file(file_path)
+    parse_folder(file_path)
