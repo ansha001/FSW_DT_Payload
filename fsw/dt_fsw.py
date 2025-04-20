@@ -17,14 +17,14 @@ from battery_channel_class import battery_channel
 from FSW_PARAMS_class import FSW_PARAMS
 from FSW_ADDRS_class import FSW_ADDRS
 from packet_handler import (
-    log_binary_packet,
-    handle_request_packet,
-    build_packet_type_1, build_packet_type_2, build_packet_type_3
+    handle_request_packet, buffer_and_log_reading,
 )
 
 # Init serial port to communicate with the mock bus
 try:
     bus_serial = serial.Serial('/dev/serial0', 115200, timeout=0.1)
+    bus_serial.flushInput()
+    bus_serial.flushOutput()
     print("[INFO] Bus serial connection established")
 except Exception as e:
     print(f"[ERROR] Failed to open serial port for bus: {e}")
@@ -48,6 +48,24 @@ header = ['Time (s)','Temp0','Temp1','Temp2','Temp_CPU','Volt0','Volt1','Volt2',
 with open(file_name, 'w', encoding='UTF8', newline='') as f:
     writer = csv.writer(f)
     writer.writerow(header)
+
+STATE_CODES = {
+    'CHG': 0,
+    'DIS': 1,
+    'REST': 2,
+    'CHG_REST': 3,
+    'DIS_REST': 4,
+    'CHG_LOW': 5,
+    'DIS_LOW': 6,
+    'UNKNOWN': 255
+}
+
+MODE_CODES = {
+    'CYCLE': 0,
+    'TEST': 1,
+    'UNKNOWN': 255
+}
+
 
 def init_GPIO():
     GPIO.setmode(GPIO.BCM)
@@ -351,10 +369,13 @@ if __name__ == "__main__":
                 check_for_data_request()
                 time_prev_check_s = time_iter_s
 
+            # Handle incoming data request from bus
             if bus_serial:
                 try:
-                    waiting_bytes = bus_serial.in_waiting  
+                    waiting_bytes = bus_serial.in_waiting
+                
                     if waiting_bytes >= 17:
+                        print("[PAYLOAD] Bus request received!")
                         header_and_size = bus_serial.read(12)
                         if header_and_size[:8] != b'\x30\x20\x30\x20\x30\x20\x30\x20':
                             print("[BUS] Invalid packet header received.")
@@ -363,16 +384,19 @@ if __name__ == "__main__":
                         size = struct.unpack('<I', header_and_size[8:12])[0]
                         rest = bus_serial.read(size)
                         full_packet = header_and_size + rest
-
+                        print("[PAYLOAD] Raw request:", full_packet.hex())
                         response = handle_request_packet(full_packet)
                         if response:
                             bus_serial.write(response)
+                            bus_serial.flush()
                             print(f"[BUS] Sent response of length {len(response)} bytes.")
+                            print("[BUS DEBUG] Response hex:", response.hex())
                         else:
                             print("[BUS] No response generated.")
                 except (OSError, serial.SerialException) as e:
                     print(f"[BUS] Serial error: {e}")
 
+            
             if time_iter_s > time_prev_sensors_s + PARAMS.DT_SENSORS_S:
                 sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
                 #grab the latest sensor measurements - helpful for some things, debugging
@@ -427,13 +451,13 @@ if __name__ == "__main__":
                 #TODO write to memory to prepare for reset
                 log_sensor_data(time_iter_s, sensor_data, ch0, ch1, ch2)
                 
-                payload_1 = build_packet_type_1(
-                time_s=time_iter_s,
-                voltages=[ch0.volt_v, ch1.volt_v, ch2.volt_v],
-                currents=[ch0.curr_ma, ch1.curr_ma, ch2.curr_ma],
-                temps=[ch0.temp_c, ch1.temp_c, ch2.temp_c]
+                reading_1 = (
+                    time_iter_s,
+                    ch0.volt_v, ch1.volt_v, ch2.volt_v,
+                    ch0.curr_ma, ch1.curr_ma, ch2.curr_ma,
+                    ch0.temp_c, ch1.temp_c, ch2.temp_c
                 )
-                log_binary_packet(1, payload_1)
+                buffer_and_log_reading(1, reading_1)
                 
                 print('Tempera: %5.2f, %5.2f, %5.2f' % (temp_iter_c[0], temp_iter_c[1], temp_iter_c[2]))
                 print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
@@ -458,19 +482,32 @@ if __name__ == "__main__":
                 if ch2.mode == 'CYCLE':
                     ch2.state_estimate(volt_iter_v[2], curr_iter_ma[2], time_iter_s)
                 
-                payload_3 = build_packet_type_3(ch0, ch1, ch2)
-                log_binary_packet(3, payload_3)
+                reading_3 = (
+                    time_iter_s,
+                    ch0.est_soc, ch0.est_volt_v, ch0.est_cov_state[0, 0], ch0.est_cov_state[1, 1], ch0.est_capacity_as, ch0.est_cov_param,
+                    ch1.est_soc, ch1.est_volt_v, ch1.est_cov_state[0, 0], ch1.est_cov_state[1, 1], ch1.est_capacity_as, ch1.est_cov_param,
+                    ch2.est_soc, ch2.est_volt_v, ch2.est_cov_state[0, 0], ch2.est_cov_state[1, 1], ch2.est_capacity_as, ch2.est_cov_param,
+                )
+                buffer_and_log_reading(3, reading_3)
+
                 #print('heartbeat, fast loop')
                 time_prev_fast_s = time_iter_s
-                           
+                
             if time_iter_s > time_prev_log2_s + PARAMS.DT_LOG2_S:
-                payload_2 = build_packet_type_2(
-                    channels=[ch0, ch1, ch2],
-                    resets=0,
-                    time_switches=time_switches,
-                    cpu_temp=get_CPU_temperature(),
-                    cpu_volt=get_CPU_voltage())
-                log_binary_packet(2, payload_2)
+                reading_2 = (
+                    time_iter_s,
+                    ch0.cycle_count, ch1.cycle_count, ch2.cycle_count,
+                    0,  # replace with actual reset count
+                    time_switches[0], time_switches[1], time_switches[2],
+                    ch0.test_sequence, ch1.test_sequence, ch2.test_sequence,
+                    STATE_CODES.get(ch0.state, 255), STATE_CODES.get(ch1.state, 255), STATE_CODES.get(ch2.state, 255),  
+                    MODE_CODES.get(ch0.mode, 255), MODE_CODES.get(ch1.mode, 255), MODE_CODES.get(ch2.mode, 255),  
+                    get_CPU_temperature(),
+                    get_CPU_voltage()
+                )
+                print(f"Logging group 2 at {reading_2[0]:.2f}s")
+                buffer_and_log_reading(2, reading_2)
+                time_prev_log2_s = time_iter_s
 
             if time_iter_s > time_prev_heat_s + PARAMS.DT_HEAT_S:
                 #check if heater should be on

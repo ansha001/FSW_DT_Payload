@@ -3,6 +3,7 @@ import zlib
 import os
 import time
 import json
+import numpy as np
 
 HEADER = b'\x30\x20\x30\x20\x30\x20\x30\x20'
 
@@ -11,18 +12,48 @@ MAX_FILE_INDEX = 10**6
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_BASE_DIR = os.path.join(BASE_DIR, 'log')
 CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
+BUFFER_BACKUP_FILE = os.path.join(LOG_BASE_DIR, 'buffers_backup.json')
+
 
 with open(CONFIG_FILE, 'r') as f:
     CONFIG = json.load(f)
-CHUNK_ENTRIES = CONFIG.get("chunk_entries", {})
+BUFFER_ENTRIES = CONFIG.get("buffer_entries", {})
+
+reading_buffers = {
+    1: [],
+    2: [],
+    3: []
+}
+
+# Load persisted buffer if it exists
+def load_buffer_backup():
+    if os.path.exists(BUFFER_BACKUP_FILE):
+        try:
+            with open(BUFFER_BACKUP_FILE, 'r') as f:
+                data = json.load(f)
+                for key in reading_buffers:
+                    reading_buffers[key] = data.get(str(key), [])
+            print("[INFO] Buffer state restored from backup.")
+        except Exception as e:
+            print(f"[ERROR] Failed to load buffer backup: {e}")
+
+# Save current buffer to backup file
+# to be Called periodically or before power cycle
+def save_buffer_backup():
+    try:
+        with open(BUFFER_BACKUP_FILE, 'w') as f:
+            json.dump(reading_buffers, f)
+        print("[INFO] Buffer state saved.")
+    except Exception as e:
+        print(f"[ERROR] Failed to save buffer backup: {e}")
+
+load_buffer_backup()
 
 # CRC and Packet Builder
 def compute_crc32(data: bytes) -> int:
     return zlib.crc32(data)
 
-"""
-Build response packet in the format - [HEADER][SIZE][TYPE][PAYLOAD][CRC32]
-"""
+# Build response packet in the format - [HEADER][SIZE][TYPE][PAYLOAD][CRC32]
 def build_response_packet(msg_type: int, payload: bytes) -> bytes:
     size = len(payload) + 1 + 4
     size_bytes = struct.pack('<I', size)
@@ -32,112 +63,90 @@ def build_response_packet(msg_type: int, payload: bytes) -> bytes:
 
     return HEADER + packet_wo_crc + struct.pack('<I', crc)
 
-def get_chunk_folder(msg_type: int) -> str:
-    folder = os.path.join(LOG_BASE_DIR, f"type{msg_type}")
+def get_group_folder(group_id: int) -> str:
+    folder = os.path.join(LOG_BASE_DIR, f"group{group_id}")
     os.makedirs(folder, exist_ok=True)
     return folder
 
-def get_pointer_path(msg_type: int, pointer_name='current') -> str:
-    return os.path.join(get_chunk_folder(msg_type), f'.{pointer_name}_pointer')
+def log_binary_packet(group_id: int, payload: bytes):
+    folder = get_group_folder(group_id)
+    index = get_latest_index(group_id) + 1
+    filename = f"{group_id}_{index}.bin"
+    full_path = os.path.join(folder, filename)
 
-def read_pointer(msg_type: int, pointer_name='current') -> int:
-    path = get_pointer_path(msg_type, pointer_name)
-    try:
-        with open(path, 'r') as f:
-            return int(f.read().strip())
-    except (FileNotFoundError, ValueError):
-        return 0
-    
-def write_pointer(msg_type: int, value: int, pointer_name='current'):
-    path = get_pointer_path(msg_type, pointer_name)
-    with open(path, 'w') as f:
-        f.write(str(value % MAX_FILE_INDEX))
+    # Include index inside the payload
+    index_bytes = struct.pack('<I', index) # pack index as 4 bytes (uint32)
+    payload_with_index = index_bytes + payload
 
-def get_current_chunk_file(msg_type: int) -> str:
-    folder = get_chunk_folder(msg_type)
-    index = read_pointer(msg_type, 'current')
-    return os.path.join(folder, f"{msg_type}_{index}.bin")
+    # Wrap into packet with group_id as message type
+    entry = build_response_packet(group_id, payload_with_index)
 
-def increment_pointer(msg_type: int):
-    index = read_pointer(msg_type, 'current') + 1
-    write_pointer(msg_type, index, 'current')
-
-def log_binary_packet(msg_type: int, payload: bytes):
-    chunk_file = get_current_chunk_file(msg_type)
-    entry = build_response_packet(msg_type, payload)
-
-    with open(chunk_file, 'ab') as f:
+    with open(full_path, 'wb') as f:
         f.write(entry)
 
-    chunk_limit = CHUNK_ENTRIES.get(f"type{msg_type}", 20)
-    with open(chunk_file, 'rb') as f:
-        count = 0
-        while f.read(8):
-            size_bytes = f.read(4)
-            if len(size_bytes) < 4:
-                break
-            size = struct.unpack('<I', size_bytes)[0]
-            f.read(size)
-            count += 1
+    print(f"[LOG] Group {group_id}: Written to {full_path}")
 
-    if count >= chunk_limit:
-        increment_pointer(msg_type)
 
-# Build packets for message types
+# Build packets for message groups
+def build_packet_group_1(reading_list):
+    payload = b''
+    for reading in reading_list:
+        # (time_s, volt0, volt1, volt2, curr0, curr1, curr2, temp0, temp1, temp2) = reading
+        # arr = np.array([time_s, volt0, volt1, volt2, curr0, curr1, curr2, temp0, temp1, temp2], dtype=np.float16)
+        arr = np.array(reading, dtype=np.float16)
+        payload += arr.tobytes()
+    return payload
 
-def build_packet_type_1(time_s: float, voltages, currents, temps) -> bytes:
-    return struct.pack('<f3f3f3f', time_s, *voltages, *currents, *temps)
+def build_packet_group_2(reading_list):
+    payload = b''
+    for reading in reading_list:
+        (
+            time_s, 
+            cyc0, cyc1, cyc2, 
+            resets, 
+            tms0, tms1, tms2, 
+            seq0, seq1, seq2, 
+            state0, state1, state2, 
+            mode0, mode1, mode2, 
+            cpu_temp, cpu_volt
+        ) = reading
 
-def build_packet_type_2(channels, resets, time_switches, cpu_temp: float, cpu_volt: float) -> bytes:
-    return struct.pack(
-        '<3B H 3H 3B 3B 3B 2f',
-        *[ch.cycle_count for ch in channels],
-        resets,
-        *time_switches,
-        *[ch.test_sequence for ch in channels],
-        *[ch.state_code for ch in channels],
-        *[ch.mode_code for ch in channels],
-        cpu_temp,
-        cpu_volt
-    )
+        int_part = struct.pack('<3B H 3H 3B 3B 3B', cyc0, cyc1, cyc2, resets, tms0, tms1, tms2, seq0, seq1, seq2, state0, state1, state2, mode0, mode1, mode2)
+        float_part = np.array([time_s, cpu_temp, cpu_volt], dtype=np.float16).tobytes()
+        payload += float_part + int_part
+    return payload
 
-def build_packet_type_3(ch0, ch1, ch2) -> bytes:
-#     print(ch0.est_cov_state)
-#     print(ch0.est_cov_state[0, 0])
-#     print(ch0.est_cov_state[1, 1])
-    return struct.pack(
-        #'<' + '2f4f4f4f4f' * 3,
-        '<' + '1f1f1f1f1f1f' * 3,
-        float(ch0.est_soc),
-        float(ch0.est_volt_v),
-        float(ch0.est_cov_state[0,0]),
-        float(ch0.est_cov_state[1,1]),
-        float(ch0.est_capacity_as),
-        float(ch0.est_cov_param),
-        #ch0.ohmic_resistance,
-        #ch0.capacitance,
-        #ch0.resistance,
+def build_packet_group_3(reading_list):
+    payload = b''
+    for reading in reading_list:
+        (
+            time_s, 
+            soc0, volt0, cov00_0, cov11_0, cap0, param0, 
+            soc1, volt1, cov00_1, cov11_1, cap1, param1, 
+            soc2, volt2, cov00_2, cov11_2, cap2, param2
+        ) = reading
+
+        timestamp_bytes = np.array([time_s], dtype=np.float16).tobytes()
+        estimator_data = struct.pack('<18f', soc0, volt0, cov00_0, cov11_0, cap0, param0, soc1, volt1, cov00_1, cov11_1, cap1, param1, soc2, volt2, cov00_2, cov11_2, cap2, param2)
+        payload += timestamp_bytes + estimator_data
+    return payload
+
+def buffer_and_log_reading(group_id: int, reading: tuple):
+    reading_buffers[group_id].append(reading)
+    buffer_limit = BUFFER_ENTRIES.get(f"group{group_id}", 5)
+
+    if len(reading_buffers[group_id]) >= buffer_limit:
+        if group_id == 1:
+            payload = build_packet_group_1(reading_buffers[group_id])
+        elif group_id == 2:
+            payload = build_packet_group_2(reading_buffers[group_id])
+        elif group_id == 3:
+            payload = build_packet_group_3(reading_buffers[group_id])
+        else:
+            raise ValueError("Invalid group ID")
         
-        float(ch1.est_soc),
-        float(ch1.est_volt_v),
-        float(ch1.est_cov_state[0,0]),
-        float(ch1.est_cov_state[1,1]),
-        float(ch1.est_capacity_as),
-        float(ch1.est_cov_param),
-        #ch1.ohmic_resistance,
-        #ch1.capacitance,
-        #ch1.resistance,
-
-        float(ch2.est_soc),
-        float(ch2.est_volt_v),
-        float(ch2.est_cov_state[0,0]),
-        float(ch2.est_cov_state[1,1]),
-        float(ch2.est_capacity_as),
-        float(ch2.est_cov_param)
-        #ch2.ohmic_resistance,
-        #ch2.capacitance,
-        #ch2.resistance
-        )
+        log_binary_packet(group_id, payload)
+        reading_buffers[group_id].clear()
 
 def parse_request_packet(packet: bytes):
     if len(packet) < 17 or packet[:8] != HEADER:
@@ -150,7 +159,7 @@ def parse_request_packet(packet: bytes):
         raise ValueError("Checksum mismatch")
     return msg_type, payload
 
-GLOBAL_POINTER_PATH = os.path.join(LOG_BASE_DIR, '.last_sent_msg_type')
+GLOBAL_POINTER_PATH = os.path.join(LOG_BASE_DIR, '.last_sent_group')
 
 def read_global_pointer() -> int:
     try:
@@ -159,21 +168,22 @@ def read_global_pointer() -> int:
     except (FileNotFoundError, ValueError):
         return 0
 
-def write_global_pointer(msg_type: int):
+def write_global_pointer(group_id: int):
     with open(GLOBAL_POINTER_PATH, 'w') as f:
-        f.write(str(msg_type % 256))
+        f.write(str(group_id % 256))
 
-def get_file_path(msg_type: int, index: int) -> str:
-    folder = get_chunk_folder(msg_type)
-    filename = f"{msg_type}_{index}.bin"
+# for specific requests
+def get_file_path(group_id: int, index: int) -> str:
+    folder = get_group_folder(group_id)
+    filename = f"{group_id}_{index}.bin"
     path = os.path.join(folder, filename)
     return path if os.path.exists(path) else None
 
-def get_latest_index(msg_type: int) -> int:
-    folder = get_chunk_folder(msg_type)
+def get_latest_index(group_id: int) -> int:
+    folder = get_group_folder(group_id)
     max_index = -1
     for f in os.listdir(folder):
-        if f.endswith(".bin") and f.startswith(f"{msg_type}_"):
+        if f.endswith(".bin") and f.startswith(f"{group_id}_"):
             try:
                 idx = int(f.split('_')[1].replace(".bin", ""))
                 if idx > max_index:
@@ -182,49 +192,66 @@ def get_latest_index(msg_type: int) -> int:
                 continue
     return max_index
 
+def get_pointer_path(group_id: int) -> str:
+    return os.path.join(get_group_folder(group_id), f".last_sent_pointer")
+
+def read_pointer(group_id: int) -> int:
+    path = get_pointer_path(group_id)
+    try:
+        with open(path, 'r') as f:
+            return int(f.read().strip())
+    except (FileNotFoundError, ValueError):
+        return 0
+
+def write_pointer(group_id: int, value: int):
+    path = get_pointer_path(group_id)
+    with open(path, 'w') as f:
+        f.write(str(value % MAX_FILE_INDEX))
+
 def get_next_packet_to_send() -> bytes:
-    for msg_type in [3, 2, 1]:  # Priority order
-        last_sent = read_pointer(msg_type, 'last_sent')
-        latest = get_latest_index(msg_type)
+    for group_id in [3, 2, 1]:  # Priority order
+        last_sent = read_pointer(group_id)
+        latest = get_latest_index(group_id)
 
         if latest > last_sent:
-            path = get_file_path(msg_type, last_sent + 1)
+            path = get_file_path(group_id, last_sent + 1)
             if path:
                 with open(path, 'rb') as f:
                     data = f.read()
 
-                write_pointer(msg_type, last_sent + 1, 'last_sent')
-                write_global_pointer(msg_type)
+                write_pointer(group_id, last_sent + 1)
+                write_global_pointer(group_id)
+                print(f"[DEBUG] last_sent = {last_sent}, latest = {latest} for group {group_id}")
                 return data
     return None  # No packets ready
 
 def get_last_sent_packet() -> bytes:
-    msg_type = read_global_pointer()
-    last_sent_index = read_pointer(msg_type, 'last_sent')
+    group_id = read_global_pointer()
+    last_sent_index = read_pointer(group_id)
 
-    path = get_file_path(msg_type, last_sent_index)
+    path = get_file_path(group_id, last_sent_index)
     if path and os.path.exists(path):
         with open(path, 'rb') as f:
             return f.read()
     return None
 
 def handle_request_packet(packet: bytes) -> bytes:
-    msg_type, payload = parse_request_packet(packet)
+    req_type, payload = parse_request_packet(packet)
 
-    if msg_type == 0:
+    if req_type == 0:
         print("Resend request received.")
         return get_last_sent_packet()
 
-    elif msg_type == 2:
+    elif req_type == 2:
         print(f"Specific packet request received with argument: {payload}")
-        requested_type, requested_index = parse_specific_request_argument(payload)
-        if requested_type is not None and requested_index is not None:
-            path = get_file_path(requested_type, requested_index)
+        requested_group, requested_index = parse_specific_request_argument(payload)
+        if requested_group is not None and requested_index is not None:
+            path = get_file_path(requested_group, requested_index)
             if path:
                 with open(path, 'rb') as f:
                     return f.read()
             else:
-                print(f"[ERROR] File not found: {requested_type}_{requested_index}.bin")
+                print(f"[ERROR] File not found: {requested_group}_{requested_index}.bin")
                 return None
         else:
             print("[ERROR] Failed to decode specific request payload.")
@@ -237,8 +264,8 @@ def handle_request_packet(packet: bytes) -> bytes:
 def parse_specific_request_argument(payload: bytes):
     try:
         decoded = payload.decode('utf-8')
-        msg_type_str, index_str = decoded.split('_')
-        return int(msg_type_str), int(index_str)
+        group_str, index_str = decoded.split('_')
+        return int(group_str), int(index_str)
     except Exception:
         print("[ERROR] Invalid specific packet argument. Expected something like '2_3'")
         return None, None

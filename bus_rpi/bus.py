@@ -80,16 +80,12 @@ def read_response(ser: serial.Serial, last_argument_sent=None):
         packet = header_and_size + rest
 
         try:
-            message_type, payload = parse_response_packet(packet)
-            print(f"[RECEIVED] Type: {message_type}, Payload Length: {len(payload)} bytes")
+            group_id, payload = struct.unpack('<B', packet[12:13])[0], packet[13:-4]
+            index = struct.unpack('<I', payload[:4])[0]  # get index from payload
+            print(f"[RECEIVED] Group: {group_id}, Index: {index}, Payload Length: {len(payload)} bytes")
 
-            if last_argument_sent and '_' in last_argument_sent:
-                filename = f"{last_argument_sent}.bin"
-            else:
-                # fallback to a timestamp if arg not usable
-                filename = f"{message_type}_{int(time.time())}.bin"
-
-            folder = f"received_logs/type{message_type}"
+            filename = f"{group_id}_{index}.bin"
+            folder = f"received_logs/group{group_id}"
             os.makedirs(folder, exist_ok=True)
             with open(os.path.join(folder, filename), 'wb') as f:
                 f.write(packet)
