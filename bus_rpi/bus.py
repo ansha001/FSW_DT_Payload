@@ -32,7 +32,7 @@ def build_packet(message_type: int, argument: str = "") -> bytes:
         argument_bytes = b""
 
     payload = type_byte + argument_bytes
-    size = len(payload) + 4  # TYPE + ARG + CRC
+    size = len(payload) + 8   # TYPE + ARG + CRC + size
     size_bytes = struct.pack('<I', size)
     packet_without_checksum = size_bytes + payload
 
