@@ -237,8 +237,16 @@ def get_last_sent_packet() -> bytes:
 
 def handle_request_packet(packet: bytes) -> bytes:
     req_type, payload = parse_request_packet(packet)
-
-    if req_type == 0:
+    
+    if req_type == 4:
+        print("Shutdown request received.")
+        return -1
+    
+    elif req_type == 5:
+        print("Reboot request received.")
+        return -2
+    
+    elif req_type == 0:
         print("Resend request received.")
         return get_last_sent_packet()
 
@@ -257,7 +265,7 @@ def handle_request_packet(packet: bytes) -> bytes:
             print("[ERROR] Failed to decode specific request payload.")
             return None
 
-    else:
+    else: #should be message type 1
         print("Next packet request received.")
         return get_next_packet_to_send()
 
