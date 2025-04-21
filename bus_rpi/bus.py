@@ -16,6 +16,7 @@ MESSAGE_TYPE_SEND_NEXT = 1  # Default usage
 MESSAGE_TYPE_REQUEST_SPECIFIC = 2
 MESSAGE_TYPE_UPDATE_PARAMS = 3
 MESSAGE_TYPE_SHUTDOWN = 4
+MESSAGE_TYPE_REBOOT = 5
 
 def compute_crc32(data: bytes) -> int:
     return zlib.crc32(data)
@@ -32,7 +33,7 @@ def build_packet(message_type: int, argument: str = "") -> bytes:
         argument_bytes = b""
 
     payload = type_byte + argument_bytes
-    size = len(payload) + 8   # TYPE + ARG + CRC + size
+    size = len(payload) + 8 # TYPE + ARG + CRC + size
     size_bytes = struct.pack('<I', size)
     packet_without_checksum = size_bytes + payload
 
@@ -102,7 +103,7 @@ def main():
         with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=TIMEOUT_SEC) as ser:
             last_argument_sent = None
             while True:
-                user_input = input("Enter command (n=next, r=resend, s <type>_<index>, k for kill): ").strip()
+                user_input = input("Enter command (n=next, r=resend, s <type>_<index>, k for kill, b for reboot): ").strip()
                 if user_input == 'r':
                     send_request(ser, MESSAGE_TYPE_RESEND_LAST)
                     last_argument_sent = None
@@ -116,8 +117,11 @@ def main():
                 elif user_input == 'k':
                     send_request(ser, MESSAGE_TYPE_SHUTDOWN)
                     last_argument_sent = None
+                elif user_input == 'b':
+                    send_request(ser, MESSAGE_TYPE_REBOOT)
+                    last_argument_sent = None
                 else:
-                    print("[INFO] Unknown command. Use 'n', 'r', or 's <type>_<index>'")
+                    print("[INFO] Unknown command. Use 'n', 'r', 's <type>_<index>', k or b")
                     continue
 
                 time.sleep(1)
