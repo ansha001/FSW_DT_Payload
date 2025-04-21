@@ -361,6 +361,9 @@ if __name__ == "__main__":
     curr_iter_ma = sensor_data[8:11]
     
     try:
+        #init size and queue
+        size = 0
+        queue = None
         while True:
             time_iter_s = time.monotonic()
 
@@ -371,28 +374,52 @@ if __name__ == "__main__":
                 time_prev_check_s = time_iter_s
 
             # Handle incoming data request from bus
+            
             if bus_serial:
                 try:
                     waiting_bytes = bus_serial.in_waiting
-                
-                    if waiting_bytes >= 17:
-                        print("[PAYLOAD] Bus request received!")
-                        header_and_size = bus_serial.read(12)
-                        if header_and_size[:8] != b'\x30\x20\x30\x20\x30\x20\x30\x20':
-                            print("[BUS] Invalid packet header received.")
-                            continue
-
-                        size = struct.unpack('<I', header_and_size[8:12])[0]
-                        rest = bus_serial.read(size)
-                        full_packet = header_and_size + rest
-                        print("[PAYLOAD] Raw request:", full_packet.hex())
-                        response = handle_request_packet(full_packet)
-                        if response:
-                            bus_serial.write(response)
-                            bus_serial.flush()
-                            print(f"[BUS] Sent response of length {len(response)} bytes.")
+                    if (queue is None and waiting_bytes>=17) or (queue is not None and waiting_bytes>=size-4):
+                    #if waiting_bytes >= 17:
+                        if queue is None:
+                            print("[PAYLOAD] Bus request received!")
+                            header = bus_serial.read(8)
+                            if header != b'\x30\x20\x30\x20\x30\x20\x30\x20':
+                                print("[BUS] Invalid packet header received.")
+                                #flush the buffer
+                                flush = bus_serial.read(waiting_bytes-8)
+                            size_B = bus_serial.read(4)
+                            queue = header + size_B
+                            size = struct.unpack('<I', size_B)[0]
+#                        size = struct.unpack('<I', header_and_size[8:12])[0]
+#                        if waiting_bytes >= size + 12
+                        if waiting_bytes >= size + 8:
+                            print(size)
+                            rest = bus_serial.read(size-4)
+                            full_packet = header + size_B + rest
+                            print(full_packet)
+                            response = handle_request_packet(full_packet)
+                            size = 0
+                            queue = None
+                            if response == -1:
+                                safe_board()
+                                #TODO other backup fxns
+                                os.system('sudo shutdown -h now')
+                                time.sleep(10)
+                                sys.exit(0)
+                            elif response == -2:
+                                safe_board()
+                                #TODO other backup fxns
+                                os.system('sudo reboot -h now')
+                                time.sleep(10)
+                                sys.exit(0)
+                            elif response:
+                                bus_serial.write(response)
+                                bus_serial.flush()
+                                print(f"[BUS] Sent response of length {len(response)} bytes.")
+                            else:
+                                print("[BUS] No response generated.")
                         else:
-                            print("[BUS] No response generated.")
+                            queue = header + size_B
                 except (OSError, serial.SerialException) as e:
                     print(f"[BUS] Serial error: {e}")
 
@@ -458,18 +485,18 @@ if __name__ == "__main__":
                 )
                 buffer_and_log_reading(1, reading_1)
                 
-                print('Tempera: %5.2f, %5.2f, %5.2f' % (temp_iter_c[0], temp_iter_c[1], temp_iter_c[2]))
-                print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
-                print('Current: %5.2f, %5.2f, %5.2f' % (curr_iter_ma[0], curr_iter_ma[1], curr_iter_ma[2]))
-                print('dis_val: %5.2f, %5.2f, %5.2f' % (ch0.dis_val, ch1.dis_val, ch2.dis_val))
-                print('dis_low: %5.2f, %5.2f, %5.2f' % (ch0.dis_low_val, ch1.dis_low_val, ch2.dis_low_val))
-                print('chg_val: %5.2f, %5.2f, %5.2f' % (ch0.chg_val, ch1.chg_val, ch2.chg_val))
-                print('chg_low: %5.2f, %5.2f, %5.2f' % (ch0.chg_low_val, ch1.chg_low_val, ch2.chg_low_val))
-                print('ch_stat:'+ch0.state+','+ch1.state+','+ch2.state)
-                print('ch_mode:'+ch0.mode+','+ch1.mode+','+ch2.mode)
-                print('Test_sq: %3.1f, %3.1f, %3.1f' % (ch0.test_sequence, ch1.test_sequence, ch2.test_sequence))
-                print('SOC_est: %5.2f, %5.2f, %5.2f' % (ch0.est_soc, ch1.est_soc, ch2.est_soc))
-                print('CAP est: %5.2f, %5.2f, %5.2f' % (ch0.est_capacity_as, ch1.est_capacity_as, ch2.est_capacity_as))
+                #print('Tempera: %5.2f, %5.2f, %5.2f' % (temp_iter_c[0], temp_iter_c[1], temp_iter_c[2]))
+                #print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
+                #print('Current: %5.2f, %5.2f, %5.2f' % (curr_iter_ma[0], curr_iter_ma[1], curr_iter_ma[2]))
+                #print('dis_val: %5.2f, %5.2f, %5.2f' % (ch0.dis_val, ch1.dis_val, ch2.dis_val))
+                #print('dis_low: %5.2f, %5.2f, %5.2f' % (ch0.dis_low_val, ch1.dis_low_val, ch2.dis_low_val))
+                #print('chg_val: %5.2f, %5.2f, %5.2f' % (ch0.chg_val, ch1.chg_val, ch2.chg_val))
+                #print('chg_low: %5.2f, %5.2f, %5.2f' % (ch0.chg_low_val, ch1.chg_low_val, ch2.chg_low_val))
+                #print('ch_stat:'+ch0.state+','+ch1.state+','+ch2.state)
+                #print('ch_mode:'+ch0.mode+','+ch1.mode+','+ch2.mode)
+                #print('Test_sq: %3.1f, %3.1f, %3.1f' % (ch0.test_sequence, ch1.test_sequence, ch2.test_sequence))
+                #print('SOC_est: %5.2f, %5.2f, %5.2f' % (ch0.est_soc, ch1.est_soc, ch2.est_soc))
+                #print('CAP est: %5.2f, %5.2f, %5.2f' % (ch0.est_capacity_as, ch1.est_capacity_as, ch2.est_capacity_as))
                 time_prev_log_s = time_iter_s
                 
             if time_iter_s > time_prev_fast_s + PARAMS.DT_FAST_S:
