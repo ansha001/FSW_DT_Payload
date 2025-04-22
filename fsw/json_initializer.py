@@ -1,0 +1,113 @@
+""" State variable initializer
+Create the json file that contains the backups of battery channel data and experiment parameters
+AZ, 2025 April 21
+"""
+
+import json
+import os
+import numpy as np
+    
+if __name__ == "__main__":
+    param_file = os.getcwd() + '/PARAMS_LIST.json'
+    fsw_file = os.getcwd() + '/FSW_BACKUP.json'
+    ch0_file = os.getcwd() + '/CH0_BACKUP.json'
+    ch1_file = os.getcwd() + '/CH1_BACKUP.json'
+    ch2_file = os.getcwd() + '/CH2_BACKUP.json'
+    
+    param_vals = {"DT_CHECK_S" : 0.2,          # time step between important checks
+        "DT_SENSORS_S" : 0.1,         # time step between reading sensors
+        "DT_LOG_S"  : 1.0,            # time step between logs
+        "DT_LOG2_S" : 60,             # time step between type 2 logs
+        "DT_LOG3_S" : 300,            # time step between type 3 logs
+        "DT_HEAT_S" : 160,            # time step between checking heater
+        "DT_FAST_S" : 1,              # time step between fast loop of EKF
+        "DT_SLOW_S" : 1000,           # time step between slow loop of EKF
+        "DT_BACKUP_S" : 60,           # time step between backups
+        "CHG_LIMIT_V" : 4.20,         # voltage to stop charging
+        "DIS_LIMIT_V" : 2.75,         # voltage to stop discharging
+        "FB_PULSE1_V" : 3.10,         # fallback voltage for 65% SOC
+        "FB_PULSE2_V" : 3.00,         # fallback voltage for 30% SOC
+        "SOC_PULSE1" : 0.65,          # SOC to perform pulse 1
+        "SOC_PULSE2" : 0.30,          # SOC to perform pulse 2
+        "TIME_CYCLE_REST_S" : 300,    # time to rest between charge/discharge cycles, seconds  [NOMINALLY  5 MINUTES]
+        "TIME_PULSE_REST_S" : 600,    # time to rest after pulse tests, seconds                [NOMINALLY 10 MINUTES]
+        "TIME_PULSE_TEST_S" :  10,    # time to hold current during pulse tests, seconds       [NOMINALLY 10 SECONDS]
+        "TIME_TEST_REST_S" : 3600,    # time to rest before and after char test, seconds       [NOMINALLY  1 HOUR]
+        "TEMP_MAX_C" :  65,           # above this, go to safe mode
+        "TEMP_MIN_C" : -10,           # below this, go to safe mode
+        "TEMP_HEATER_ON_C"  : 10,     # below this, turn heater on
+        "TEMP_HEATER_OFF_C" : 25,     # above this, turn heater off
+        "TEMP_CHG_MAX_C"   : 60,      # above this, stop charging
+        "TEMP_CHG_UPPER_C" : 15,      # above this, charge setpoint is -40 mA
+        "TEMP_CHG_LOWER_C" : 5,       # above this, charge setpoint is -10 mA
+        "TEMP_CHG_MIN_C"   : 0,       # below this, stop charging
+        
+        "CHG_UPPER_SETPT_MA" : -45,   # nominal setpoint
+        "CHG_LOWER_SETPT_MA" : -10,   # cold setpoint
+        "CHG_MIN_SETPT_MA"   : -8,    # minimum setpoint
+        
+        "CHG_SETPT_DELTA_MA" : 0.5,     # if charging current is outside bound, increment potentiometer
+        "CHG_LOW_SETPT_MA" : -10,       # setpoint for 1/10 C charging
+        "CHG_LOW_SETPT_DELTA_MA" : 0.3, #bound for when in low charge mode
+        "DIS_SETPT_MA" : 45,            # discharge setpoint
+        "DIS_SETPT_DELTA_MA" : 0.5,
+        "DIS_LOW_SETPT_MA" : 4.5,       # setpoint for 1/10 C discharging
+        "DIS_LOW_SETPT_DELTA_MA" : 0.3, #bound for when in low discharge mode
+        
+        "DIS_TRANS_MA" : 4.9,           #current to transition to low current mode
+        "CHG_VAL_INIT" : 9,
+        "DIS_VAL_INIT" : 120,
+        "NUM_CYCLES_PER_TEST" : 20,     # typically 20
+        "num_boots" : 0, }
+
+    json_str = json.dumps(param_vals) #convert to json str
+    
+    with open(param_file, 'w') as json_out:
+        json_out.write(json_str)
+        
+    with open(param_file, 'r') as json_in:  #for bugging, read what we just wrote
+        parsed = json.loads(json_in.read())
+        print(json.dumps(parsed, indent=4, sort_keys=False))
+        
+    ch0_vals = {"state" : "DIS",
+        "state_prev" : "DIS",
+        "mode" : "CYCLE",
+        "test_sequence" : 0,
+        "volt_v" : 0,     
+        "temp_c" : 20,
+        "cycle_count" : 99,
+        "chg_val" : 9,
+        "dis_val" : 120,
+        "chg_low_val" : 200,
+        "dis_low_val" : 120,
+        "pulse_state" : False,
+        "en_chg_state" : False,
+        "en_dis_state" : False,
+        "en_cur_state" : False,
+        "update_act" : False,
+        "cc_capacity_mas" : 0,
+        "cc_soc_mas" : 0,
+        "R_SHUNT_OHMS" : 1.0,
+        "est_capacity_as" : 0.0476705 * 3600,   # Initial capacity in As
+        "est_soc" : 0,
+        "est_cov_state00" : 1e-7, #np.zeros((2, 2)),  # 2x2 covariance matrix for state EKF
+        "est_cov_state01" : 0,
+        "est_cov_state10" : 0,
+        "est_cov_state11" : 1e-7,
+        "est_cov_param" : 1e-1, }#covariance for param EKF
+
+    json_str = json.dumps(ch0_vals) #convert to json str
+    
+    with open(ch0_file, 'w') as json_out:
+        json_out.write(json_str)
+        
+    with open(ch1_file, 'w') as json_out:
+        json_out.write(json_str)
+    
+    with open(ch2_file, 'w') as json_out:
+        json_out.write(json_str)
+        
+    with open(ch0_file, 'r') as json_in:  #for bugging, read what we just wrote
+        parsed = json.loads(json_in.read())
+        print(json.dumps(parsed, indent=4, sort_keys=False))
+    

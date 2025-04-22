@@ -33,7 +33,10 @@ except Exception as e:
 # load addresses
 ADDRS = FSW_ADDRS()
 # load params
-PARAMS = FSW_PARAMS()
+params_file = os.getcwd() + '/PARAMS_LIST.json'
+PARAMS = FSW_PARAMS(params_file)
+PARAMS.num_boots += 1
+PARAMS.update_parameter(params_file, "num_boots", PARAMS.num_boots)
 
 bus = smbus2.SMBus(1)
 
@@ -65,7 +68,6 @@ MODE_CODES = {
     'TEST': 1,
     'UNKNOWN': 255
 }
-
 
 def init_GPIO():
     GPIO.setmode(GPIO.BCM)
@@ -177,8 +179,8 @@ def get_CPU_voltage():
 
 def get_CPU_frequency():
     output = subprocess.check_output(['vcgencmd','measure_clock arm'])
-    freq = 0  #TODO look at returned statement
-    return freq
+    freq_hz = float(output[14:24])
+    return freq_hz
 
 def read_voltage(channel):
     voltage_raw = bus.read_word_data(ADDRS.INA_ADDRS[channel], 0x02)  #should return 16-bit only positive values
@@ -186,9 +188,9 @@ def read_voltage(channel):
     voltage_v = 1.28 * voltage_raw * 1.25 / 1000  # in Volts
     return voltage_v
 
-def read_current(channel):
+def read_current(ch):
     #R_SHUNT_OHMS = 1 #Ohm
-    shunt_voltage_raw = bus.read_word_data(ADDRS.INA_ADDRS[channel], 0x01)  #should return 16-bit two's complement
+    shunt_voltage_raw = bus.read_word_data(ADDRS.INA_ADDRS[ch.channel], 0x01)  #should return 16-bit two's complement
     shunt_voltage_raw = ((shunt_voltage_raw << 8) & 0xFF00) | (shunt_voltage_raw >> 8)
     
     #apply two's complement correction if negative
@@ -197,7 +199,7 @@ def read_current(channel):
         shunt_voltage_raw -= (1 << 16)
         
     shunt_voltage_uv = shunt_voltage_raw * 2.5  # in uV
-    current_ua = shunt_voltage_uv / PARAMS.R_SHUNT_OHMS[channel]
+    current_ua = shunt_voltage_uv / ch.R_SHUNT_OHMS
     current_ma = current_ua / 1000.0
     return current_ma
         
@@ -217,9 +219,9 @@ def ping_sensors(ch0, ch1, ch2):
     ch1.volt_v = volt1_v
     ch2.volt_v = volt2_v
     volt_CPU_v = get_CPU_voltage()
-    curr0_ma = read_current(0)
-    curr1_ma = read_current(1)
-    curr2_ma = read_current(2)
+    curr0_ma = read_current(ch0)
+    curr1_ma = read_current(ch1)
+    curr2_ma = read_current(ch2)
     ch0.curr_ma = curr0_ma
     ch1.curr_ma = curr1_ma
     ch2.curr_ma = curr2_ma
@@ -276,9 +278,6 @@ def check_for_safety(temp_data_c):
             if temp_data_c[i] > PARAMS.TEMP_MAX_C or temp_data_c[i] < PARAMS.TEMP_MIN_C:
                 safe_board(i)
 
-def check_for_data_request():
-    return 
-
 def safe_board(cell = -1):
     if cell == -1:
         #set everything to safe settings
@@ -332,12 +331,16 @@ if __name__ == "__main__":
     time_prev_fast_s = time_iter_s
     time_prev_slow_s = time_iter_s
     time_prev_sensors_s = time_iter_s
-    time_prev_check_s = time_iter_s
+    time_prev_check_s   = time_iter_s
+    time_prev_backup_s  = time_iter_s
     
     #create battery channel objects
-    ch0 = battery_channel(channel=0,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
-    ch1 = battery_channel(channel=1,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT) 
-    ch2 = battery_channel(channel=2,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT)
+    f0 = os.getcwd() + '/CH0_BACKUP.json'
+    f1 = os.getcwd() + '/CH1_BACKUP.json'
+    f2 = os.getcwd() + '/CH2_BACKUP.json'
+    ch0 = battery_channel(channel=0,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT,file_name=f0)
+    ch1 = battery_channel(channel=1,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT,file_name=f1) 
+    ch2 = battery_channel(channel=2,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT,file_name=f2)
     
     # Track last mode switch timestamps per channel
     last_mode_switch = {
@@ -370,45 +373,43 @@ if __name__ == "__main__":
             # check safe temperatures, TODO - other checks
             if time_iter_s > time_prev_check_s + PARAMS.DT_CHECK_S:
                 check_for_safety(temp_iter_c)
-                check_for_data_request()
                 time_prev_check_s = time_iter_s
 
             # Handle incoming data request from bus
-            
             if bus_serial:
                 try:
                     waiting_bytes = bus_serial.in_waiting
                     if (queue is None and waiting_bytes>=17) or (queue is not None and waiting_bytes>=size-4):
-                    #if waiting_bytes >= 17:
                         if queue is None:
                             print("[PAYLOAD] Bus request received!")
                             header = bus_serial.read(8)
                             if header != b'\x30\x20\x30\x20\x30\x20\x30\x20':
                                 print("[BUS] Invalid packet header received.")
-                                #flush the buffer
                                 flush = bus_serial.read(waiting_bytes-8)
                             size_B = bus_serial.read(4)
                             queue = header + size_B
                             size = struct.unpack('<I', size_B)[0]
-#                        size = struct.unpack('<I', header_and_size[8:12])[0]
-#                        if waiting_bytes >= size + 12
                         if waiting_bytes >= size + 8:
-                            print(size)
                             rest = bus_serial.read(size-4)
                             full_packet = header + size_B + rest
-                            print(full_packet)
                             response = handle_request_packet(full_packet)
                             size = 0
                             queue = None
                             if response == -1:
                                 safe_board()
-                                #TODO other backup fxns
+                                save_buffer_backup()
+                                ch0.backup()
+                                ch1.backup()
+                                ch2.backup()
                                 os.system('sudo shutdown -h now')
                                 time.sleep(10)
                                 sys.exit(0)
                             elif response == -2:
                                 safe_board()
-                                #TODO other backup fxns
+                                save_buffer_backup()
+                                ch0.backup()
+                                ch1.backup()
+                                ch2.backup()
                                 os.system('sudo reboot -h now')
                                 time.sleep(10)
                                 sys.exit(0)
@@ -422,7 +423,6 @@ if __name__ == "__main__":
                             queue = header + size_B
                 except (OSError, serial.SerialException) as e:
                     print(f"[BUS] Serial error: {e}")
-
             
             if time_iter_s > time_prev_sensors_s + PARAMS.DT_SENSORS_S:
                 sensor_data, ch0, ch1, ch2 = ping_sensors(ch0, ch1, ch2)
@@ -513,7 +513,7 @@ if __name__ == "__main__":
                 reading_2 = (
                     time_iter_s,
                     ch0.cycle_count, ch1.cycle_count, ch2.cycle_count,
-                    0,  # TODO replace with actual reset count
+                    PARAMS.num_boots,  
                     time_switches[0], time_switches[1], time_switches[2],
                     ch0.test_sequence, ch1.test_sequence, ch2.test_sequence,
                     STATE_CODES.get(ch0.state, 255), STATE_CODES.get(ch1.state, 255), STATE_CODES.get(ch2.state, 255),  
@@ -542,6 +542,13 @@ if __name__ == "__main__":
                 elif statistics.median(temp_iter_c) > PARAMS.TEMP_HEATER_OFF_C:
                     GPIO.output(ADDRS.EN_HEATER_GPIO, GPIO.LOW)
                 time_prev_heat_s = time_iter_s
+                
+            if time_iter_s > time_prev_backup_s + PARAMS.DT_BACKUP_S:
+                save_buffer_backup()
+                ch0.backup()
+                ch1.backup()
+                ch2.backup()
+                time_prev_backup_s = time_iter_s
     
     except (KeyboardInterrupt):
         print('stopping test')

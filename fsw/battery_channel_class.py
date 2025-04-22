@@ -1,56 +1,109 @@
 import numpy as np
+import json
 from scipy.interpolate import interp1d
 from scipy.io import loadmat # Load the MATLAB data files
 class battery_channel:
-    def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c, chg_val, dis_val):
+    def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c, chg_val, dis_val, file_name):
+        self.file_name = file_name
         self.channel = channel
-        self.state = state
-        self.state_prev = state
-        self.mode = mode
-        self.test_sequence = 0
-        self.volt_v = volt_v     #most recent voltage measurement
-        self.temp_c = temp_c
         self.curr_ma = 0
         self.meas_curr_a_k_1 = 0
-        self.cycle_count = cycle_count
         self.time_resting_started_s = -1
         self.time_prev_s = -1
         self.time_iter_prev_s = -1
-        self.chg_val = chg_val
-        self.dis_val = dis_val
-        self.chg_low_val = 200
-        self.dis_low_val = dis_val
-        self.pulse_state = False
-        self.en_chg_state = False
-        self.en_dis_state = False
-        self.en_cur_state = False
         self.update_act = False
-        self.cc_capacity_mas = 0
-        self.cc_soc_mas = 0
-        
-        self.est_capacity_as = 0.0476705 * 3600   # Initial capacity in As
-        self.est_soc = 0
+        self.R_state = 0.015                     # Measurement noise covariance
+        self.Q_state = np.diag([1e-6, 1e-3])     # Process noise covariance
+        self.Q_param = 1e-1                      # Parameter process noise
+        self.R_param = 3.72725e-3                # Parameter measurement noise
+        self.update_counter = 0
         self.est_volt_v = 0
-        self.est_cov_state = np.zeros((2, 2))  # 2x2 covariance matrix for state EKF
-        self.est_cov_param = -1 #covariance for param EKF
+        
+        try:
+            with open(file_name, 'r') as json_in:
+                vals = json.loads(json_in.read())
+                self.state      = vals["state"]             
+                self.state_prev = vals["state_prev"]           
+                self.mode = vals["mode"]
+                self.test_sequence = vals["test_sequence"]
+                self.volt_v = vals["volt_v"]
+                self.temp_c = vals["temp_c"]
+                self.cycle_count = vals["cycle_count"]
+                self.chg_val = vals["chg_val"]
+                self.dis_val = vals["dis_val"]
+                self.chg_low_val = vals["chg_low_val"]
+                self.dis_low_val = vals["dis_low_val"]
+                self.pulse_state = vals["pulse_state"]
+                self.en_chg_state = vals["en_chg_state"]
+                self.en_dis_state = vals["en_dis_state"]
+                self.en_cur_state = vals["en_cur_state"]
+                self.cc_capacity_mas = vals["cc_capacity_mas"]
+                self.cc_soc_mas = vals["cc_soc_mas"]
+                self.R_SHUNT_OHMS = vals["R_SHUNT_OHMS"]
+                
+                self.est_capacity_as = vals["est_capacity_as"]
+                self.est_soc = vals["est_soc"]
+                self.est_cov_state = np.zeros((2, 2)) # 2x2 covariance matrix for state EKF
+                self.est_cov_state[0,0] = vals["est_cov_state00"]
+                self.est_cov_state[0,1] = vals["est_cov_state01"] 
+                self.est_cov_state[1,0] = vals["est_cov_state10"] 
+                self.est_cov_state[1,1] = vals["est_cov_state11"] 
+                self.est_cov_param = vals["est_cov_param"] #covariance for param EKF
+
+                # EKF initializations 
+                self.P_state = self.est_cov_state     # State covariance
+                self.P_param = self.est_cov_param     # Parameter covariance
+                
+        except Exception:
+            print('Error reading battery json')
+            self.state = state
+            self.state_prev = state
+            self.mode = mode
+            self.test_sequence = 0
+            self.volt_v = volt_v     #most recent voltage measurement
+            self.temp_c = temp_c
+            self.curr_ma = 0
+            self.meas_curr_a_k_1 = 0
+            self.cycle_count = cycle_count
+            self.time_resting_started_s = -1
+            self.time_prev_s = -1
+            self.time_iter_prev_s = -1
+            self.chg_val = chg_val
+            self.dis_val = dis_val
+            self.chg_low_val = 200
+            self.dis_low_val = dis_val
+            self.pulse_state = False
+            self.en_chg_state = False
+            self.en_dis_state = False
+            self.en_cur_state = False
+            self.update_act = False
+            self.cc_capacity_mas = 0
+            self.cc_soc_mas = 0
+            self.R_SHUNT_OHMS = 1.0
+            
+            self.est_capacity_as = 0.0476705 * 3600   # Initial capacity in As
+            self.est_soc = 0
+            self.est_volt_v = 0
+            self.est_cov_state = np.zeros((2, 2))  # 2x2 covariance matrix for state EKF
+            self.est_cov_param = -1 #covariance for param EKF
+
+            # EKF initializations 
+            self.P_state = np.diag([1e-7, 1e-7])     # State covariance
+            self.P_param = 1e-1                      # Parameter covariance
+        
+        self.x_hat_state = np.array([self.est_soc, self.est_volt_v])  # [SOC; Vc1]
+        self.x_hat_param = self.est_capacity_as                # Initial capacity (As)
+        self.x_hat_param_k_1 = self.est_capacity_as
+        
+        self.K_state = np.zeros(2)
+        self.dx_by_dtheta_k = np.zeros(2)
+        self.dx_by_dtheta_k_1 = np.zeros(2)
 
         # lookup tables as class attributes
         rc_rs_values = loadmat(r'mat_files/RC_Rs_values_1.mat') 
         rc_rs_values_charging = loadmat(r'mat_files/RC_Rs_values_1_charging.mat')
         ocv_data = loadmat(r'mat_files/LIR2032_EEMB_Cell1_25C_OCV.mat')
         data_cell2 = loadmat(r'mat_files/data_Cell2_25C.mat')
-    
-        # self.SOC_table = np.linspace(0, 1, 100)  # Discharging SOC
-        # self.Rs_table = np.ones(100) * 0.1       # Discharging Rs
-        # self.R1_table = np.ones(100) * 0.2       # Discharging R1
-        # self.C1_table = np.ones(100) * 1000      # Discharging C1
-        # self.SOC_1_table = np.linspace(0, 1, 100) # Charging SOC
-        # self.Rs_1_table = np.ones(100) * 0.1      # Charging Rs
-        # self.R1_1_table = np.ones(100) * 0.2      # Charging R1
-        # self.C1_1_table = np.ones(100) * 1000     # Charging C1
-        # self.SOC_OCV = np.linspace(0, 1, 100)     # OCV SOC
-        # self.OCV_charge = np.linspace(3.0, 4.2, 100)  # OCV charging
-        # self.OCV_discharge = np.linspace(3.0, 4.2, 100)  # OCV discharging
 
         # Extract lookup table values - Discharging params
         self.lookup_table = rc_rs_values['lookupTable']
@@ -78,22 +131,6 @@ class battery_channel:
         self.derivative_coefficients_1 = np.polyder(self.coefficients_1)
         self.derivative_coefficients = np.polyder(self.coefficients)
 
-        # EKF initializations 
-        self.P_state = np.diag([1e-7, 1e-7])     # State covariance
-        self.Q_state = np.diag([1e-6, 1e-3])     # Process noise covariance
-        self.R_state = 0.015                     # Measurement noise covariance
-        
-        self.P_param = 1e-1                      # Parameter covariance
-        self.Q_param = 1e-1                      # Parameter process noise
-        self.R_param = 3.72725e-3                # Parameter measurement noise
-        self.x_hat_state = np.array([0.0, 0.0])  # [SOC; Vc1]
-        self.x_hat_param = self.est_capacity_as                # Initial capacity (As)
-        self.x_hat_param_k_1 = self.est_capacity_as
-        self.K_state = np.zeros(2)
-        self.dx_by_dtheta_k = np.zeros(2)
-        self.dx_by_dtheta_k_1 = np.zeros(2)
-        self.update_counter = 0
-
     def dOCV_dSOC_1(self, soc):
         return np.polyval(self.derivative_coefficients_1, soc)
 
@@ -107,14 +144,28 @@ class battery_channel:
             if self.state == 'CHG' and self.volt_v >= PARAMS.CHG_LIMIT_V:
                 self.state = 'CHG_REST'
                 self.time_resting_started_s = time_iter_s
+            else:
+                self.cc_soc_mas = self.cc_soc_mas - self.curr_ma * (time_iter_s - self.time_prev_s)
+                self.time_prev_s = time_iter_s
+            
             if self.state == 'DIS' and self.volt_v <= PARAMS.DIS_LIMIT_V:
                 self.state = 'DIS_REST'
                 self.time_resting_started_s = time_iter_s
+            else:
+                self.cc_soc_mas = self.cc_soc_mas - self.curr_ma * (time_iter_s - self.time_prev_s)
+                self.time_prev_s = time_iter_s
+            
             if self.state == 'CHG_REST' and time_iter_s - self.time_resting_started_s > PARAMS.TIME_CYCLE_REST_S:
                 self.state = 'DIS'
+                #TODO append soc to history
+                self.cc_soc_mas = 0
+                self.time_prev_s = time_iter_s
             if self.state == 'DIS_REST' and time_iter_s - self.time_resting_started_s > PARAMS.TIME_CYCLE_REST_S:
                 self.state = 'CHG'
                 self.cycle_count += 1
+                #TODO append soc to history
+                self.cc_soc_mas = 0
+                self.time_prev_s = time_iter_s
         else:
             self.mode = 'TEST'
             if self.test_sequence == 0 and self.volt_v >= PARAMS.DIS_LIMIT_V:
@@ -433,4 +484,36 @@ class battery_channel:
             'TEST': 1
             }.get(self.mode, 255)
 
+    def channel_backup(self):
+        #save all the things to the json
+        ch_vals = {"state" : self.state,
+            "state_prev" : self.state_prev,
+            "mode" : self.mode,
+            "test_sequence" : self.test_sequence,
+            "volt_v" : self.volt_v,     
+            "temp_c" : self.temp_c,
+            "cycle_count" : self.cycle_count,
+            "chg_val" : self.chg_val,
+            "dis_val" : self.dis_val,
+            "chg_low_val" : self.chg_low_val,
+            "dis_low_val" : self.dis_low_val,
+            "pulse_state" : self.pulse_state,
+            "en_chg_state" : self.en_chg_state,
+            "en_dis_state" : self.en_dis_state,
+            "en_cur_state" : self.en_cur_state,
+            "update_act" : self.update_act,
+            "cc_capacity_mas" : self.cc_capacity_mas,
+            "cc_soc_mas" : self.cc_soc_mas,
+            "R_SHUNT_OHMS" : self.R_SHUNT_OHMS,
+            "est_capacity_as" : self.est_capacity_as,
+            "est_soc" : self.est_soc,
+            "est_cov_state00" : self.est_cov_state[0,0], 
+            "est_cov_state01" : self.est_cov_state[0,1],
+            "est_cov_state10" : self.est_cov_state[1,0],
+            "est_cov_state11" : self.est_cov_state[1,1],
+            "est_cov_param" : self.est_cov_param, } #covariance for param EKF
 
+        json_str = json.dumps(ch_vals) #convert to json str
+    
+        with open(self.file_name, 'w') as json_out:
+            json_out.write(json_str)
