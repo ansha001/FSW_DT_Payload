@@ -397,7 +397,6 @@ if __name__ == "__main__":
                             queue = None
                             if response == -1:
                                 safe_board()
-                                save_buffer_backup()
                                 ch0.backup()
                                 ch1.backup()
                                 ch2.backup()
@@ -406,7 +405,6 @@ if __name__ == "__main__":
                                 sys.exit(0)
                             elif response == -2:
                                 safe_board()
-                                save_buffer_backup()
                                 ch0.backup()
                                 ch1.backup()
                                 ch2.backup()
@@ -484,6 +482,7 @@ if __name__ == "__main__":
                     ch0.temp_c, ch1.temp_c, ch2.temp_c
                 )
                 buffer_and_log_reading(1, reading_1)
+                save_buffer_backup()
                 
                 #print('Tempera: %5.2f, %5.2f, %5.2f' % (temp_iter_c[0], temp_iter_c[1], temp_iter_c[2]))
                 #print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
@@ -544,7 +543,6 @@ if __name__ == "__main__":
                 time_prev_heat_s = time_iter_s
                 
             if time_iter_s > time_prev_backup_s + PARAMS.DT_BACKUP_S:
-                save_buffer_backup()
                 ch0.backup()
                 ch1.backup()
                 ch2.backup()
