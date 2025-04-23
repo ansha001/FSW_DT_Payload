@@ -13,11 +13,12 @@ import subprocess
 import statistics
 import math
 import struct
+import numpy as np
 from battery_channel_class import battery_channel
 from FSW_PARAMS_class import FSW_PARAMS
 from FSW_ADDRS_class import FSW_ADDRS
 from packet_handler import (
-    handle_request_packet, buffer_and_log_reading,
+    handle_request_packet, buffer_and_log_reading, save_buffer_backup,
 )
 
 # Init serial port to communicate with the mock bus
@@ -37,6 +38,12 @@ params_file = os.getcwd() + '/PARAMS_LIST.json'
 PARAMS = FSW_PARAMS(params_file)
 PARAMS.num_boots += 1
 PARAMS.update_parameter(params_file, "num_boots", PARAMS.num_boots)
+
+ekf_cap_file = os.getcwd() + '/EKF_BACKUP.npy' 
+cyc_cap_file = os.getcwd() + '/CYC_BACKUP.npy'
+f0 = os.getcwd() + '/CH0_BACKUP.json'
+f1 = os.getcwd() + '/CH1_BACKUP.json'
+f2 = os.getcwd() + '/CH2_BACKUP.json'
 
 bus = smbus2.SMBus(1)
 
@@ -278,6 +285,18 @@ def check_for_safety(temp_data_c):
             if temp_data_c[i] > PARAMS.TEMP_MAX_C or temp_data_c[i] < PARAMS.TEMP_MIN_C:
                 safe_board(i)
 
+def backup_cap_files(ch0, ch1, ch2):
+    ekf_cap_est_mah = -1*np.ones([1200,3])
+    ekf_cap_est_mah[:,0] = ch0.ekf_cap_est_mah
+    ekf_cap_est_mah[:,1] = ch1.ekf_cap_est_mah
+    ekf_cap_est_mah[:,2] = ch2.ekf_cap_est_mah
+    cyc_cap_est_mah = -1*np.ones([ 360,3])
+    cyc_cap_est_mah[:,0] = ch0.cyc_cap_est_mah
+    cyc_cap_est_mah[:,1] = ch1.cyc_cap_est_mah
+    cyc_cap_est_mah[:,2] = ch2.cyc_cap_est_mah
+    np.save(ekf_cap_file, ekf_cap_est_mah)
+    np.save(cyc_cap_file, cyc_cap_est_mah)
+
 def safe_board(cell = -1):
     if cell == -1:
         #set everything to safe settings
@@ -335,12 +354,12 @@ if __name__ == "__main__":
     time_prev_backup_s  = time_iter_s
     
     #create battery channel objects
-    f0 = os.getcwd() + '/CH0_BACKUP.json'
-    f1 = os.getcwd() + '/CH1_BACKUP.json'
-    f2 = os.getcwd() + '/CH2_BACKUP.json'
-    ch0 = battery_channel(channel=0,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT,file_name=f0)
-    ch1 = battery_channel(channel=1,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT,file_name=f1) 
-    ch2 = battery_channel(channel=2,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT,file_name=f2)
+    ch0 = battery_channel(channel=0,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT,
+                          file_name=f0,ekf_cap_file=ekf_cap_file,cyc_cap_file=cyc_cap_file)
+    ch1 = battery_channel(channel=1,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT,
+                          file_name=f1,ekf_cap_file=ekf_cap_file,cyc_cap_file=cyc_cap_file) 
+    ch2 = battery_channel(channel=2,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT,
+                          file_name=f2,ekf_cap_file=ekf_cap_file,cyc_cap_file=cyc_cap_file)
     
     # Track last mode switch timestamps per channel
     last_mode_switch = {
@@ -400,6 +419,7 @@ if __name__ == "__main__":
                                 ch0.backup()
                                 ch1.backup()
                                 ch2.backup()
+                                backup_cap_files(ch0, ch1, ch2)
                                 os.system('sudo shutdown -h now')
                                 time.sleep(10)
                                 sys.exit(0)
@@ -408,6 +428,7 @@ if __name__ == "__main__":
                                 ch0.backup()
                                 ch1.backup()
                                 ch2.backup()
+                                backup_cap_files(ch0, ch1, ch2)
                                 os.system('sudo reboot -h now')
                                 time.sleep(10)
                                 sys.exit(0)
@@ -525,11 +546,17 @@ if __name__ == "__main__":
                 time_prev_log2_s = time_iter_s
 
             if time_iter_s > time_prev_log3_s + PARAMS.DT_LOG3_S:
+                ch0.update_predictions()
+                ch1.update_predictions()
+                ch2.update_predictions()
                 reading_3 = (
                     time_iter_s,
                     ch0.est_soc, ch0.est_volt_v, ch0.est_cov_state[0, 0], ch0.est_cov_state[1, 1], ch0.est_capacity_as, ch0.est_cov_param,
+                    ch0.pred_ekf_one, ch0.pred_ekf_two, ch0.pred_cyc_one, ch0.pred_cyc_two,
                     ch1.est_soc, ch1.est_volt_v, ch1.est_cov_state[0, 0], ch1.est_cov_state[1, 1], ch1.est_capacity_as, ch1.est_cov_param,
+                    ch1.pred_ekf_one, ch1.pred_ekf_two, ch1.pred_cyc_one, ch1.pred_cyc_two,
                     ch2.est_soc, ch2.est_volt_v, ch2.est_cov_state[0, 0], ch2.est_cov_state[1, 1], ch2.est_capacity_as, ch2.est_cov_param,
+                    ch2.pred_ekf_one, ch2.pred_ekf_two, ch2.pred_cyc_one, ch2.pred_cyc_two,
                 )
                 buffer_and_log_reading(3, reading_3)
                 time_prev_log3_s = time_iter_s
@@ -546,6 +573,7 @@ if __name__ == "__main__":
                 ch0.backup()
                 ch1.backup()
                 ch2.backup()
+                backup_cap_files(ch0, ch1, ch2)
                 time_prev_backup_s = time_iter_s
     
     except (KeyboardInterrupt):

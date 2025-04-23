@@ -3,7 +3,7 @@ import json
 from scipy.interpolate import interp1d
 from scipy.io import loadmat # Load the MATLAB data files
 class battery_channel:
-    def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c, chg_val, dis_val, file_name):
+    def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c, chg_val, dis_val, file_name, ekf_cap_file, cyc_cap_file):
         self.file_name = file_name
         self.channel = channel
         self.curr_ma = 0
@@ -18,6 +18,21 @@ class battery_channel:
         self.R_param = 3.72725e-3                # Parameter measurement noise
         self.update_counter = 0
         self.est_volt_v = 0
+        self.pred_cyc_one = 0
+        self.pred_cyc_two = 0
+        self.pred_ekf_one = 0
+        self.pred_ekf_two = 0
+        
+        # load cap estimate backups
+        try:
+            temp = np.load(ekf_cap_file)
+            self.ekf_cap_est_mah = temp[:,channel]
+            temp = np.load(cyc_cap_file)
+            self.cyc_cap_est_mah = temp[:,channel]
+        except Exception:
+            print('Error reading capacity files')
+            self.ekf_cap_est_mah = -1*np.ones([1200])
+            self.cyc_cap_est_mah = -1*np.ones([ 360])
         
         try:
             with open(file_name, 'r') as json_in:
@@ -49,7 +64,7 @@ class battery_channel:
                 self.est_cov_state[1,0] = vals["est_cov_state10"] 
                 self.est_cov_state[1,1] = vals["est_cov_state11"] 
                 self.est_cov_param = vals["est_cov_param"] #covariance for param EKF
-
+                
                 # EKF initializations 
                 self.P_state = self.est_cov_state     # State covariance
                 self.P_param = self.est_cov_param     # Parameter covariance
@@ -86,7 +101,7 @@ class battery_channel:
             self.est_volt_v = 0
             self.est_cov_state = np.zeros((2, 2))  # 2x2 covariance matrix for state EKF
             self.est_cov_param = -1 #covariance for param EKF
-
+                
             # EKF initializations 
             self.P_state = np.diag([1e-7, 1e-7])     # State covariance
             self.P_param = 1e-1                      # Parameter covariance
@@ -144,26 +159,36 @@ class battery_channel:
             if self.state == 'CHG' and self.volt_v >= PARAMS.CHG_LIMIT_V:
                 self.state = 'CHG_REST'
                 self.time_resting_started_s = time_iter_s
-            else:
+                # move all entries down to make room for new entry
+                temp = self.cyc_cap_est_mah[0] #latest entry
+                if temp < 0:
+                    temp = (1/3600)*self.cc_soc_mas
+                self.cyc_cap_est_mah[1:]=self.cyc_cap_est_mah[:-1]
+                self.cyc_cap_est_mah[0] = (1-PARAMS.ALPHA_CYC)*temp + PARAMS.ALPHA_CYC*(1/3600)*self.cc_soc_mas
+            elif self.state == 'CHG':
                 self.cc_soc_mas = self.cc_soc_mas - self.curr_ma * (time_iter_s - self.time_prev_s)
                 self.time_prev_s = time_iter_s
             
             if self.state == 'DIS' and self.volt_v <= PARAMS.DIS_LIMIT_V:
                 self.state = 'DIS_REST'
                 self.time_resting_started_s = time_iter_s
-            else:
+                # move all entries down to make room for new entry
+                temp = self.cyc_cap_est_mah[0] #latest entry
+                if temp < 0:
+                    temp = (1/3600)*self.cc_soc_mas
+                self.cyc_cap_est_mah[1:]=self.cyc_cap_est_mah[:-1]
+                self.cyc_cap_est_mah[0] = (1-PARAMS.ALPHA_CYC)*temp + PARAMS.ALPHA_CYC*(1/3600)*self.cc_soc_mas
+            elif self.state == 'DIS':
                 self.cc_soc_mas = self.cc_soc_mas - self.curr_ma * (time_iter_s - self.time_prev_s)
                 self.time_prev_s = time_iter_s
             
             if self.state == 'CHG_REST' and time_iter_s - self.time_resting_started_s > PARAMS.TIME_CYCLE_REST_S:
                 self.state = 'DIS'
-                #TODO append soc to history
                 self.cc_soc_mas = 0
                 self.time_prev_s = time_iter_s
             if self.state == 'DIS_REST' and time_iter_s - self.time_resting_started_s > PARAMS.TIME_CYCLE_REST_S:
                 self.state = 'CHG'
                 self.cycle_count += 1
-                #TODO append soc to history
                 self.cc_soc_mas = 0
                 self.time_prev_s = time_iter_s
         else:
@@ -449,6 +474,12 @@ class battery_channel:
                self.x_hat_param = self.x_hat_param_k_1
                
             self.P_param = (1 - K_param * C_param) * P_param_pred
+            # move all entries down to make room for new entry
+            temp = self.ekf_cap_est_mah[0] #latest entry
+            if temp < 0:
+                temp = (1/3.6)*self.x_hat_param
+            self.ekf_cap_est_mah[1:]=self.ekf_cap_est_mah[:-1]
+            self.ekf_cap_est_mah[0] = (1-PARAMS.ALPHA_EKF)*temp + PARAMS.ALPHA_EKF*(1/3.6)*self.x_hat_param
             self.update_counter = 0
             
         self.x_hat_param_k_1 = self.x_hat_param    
@@ -484,7 +515,28 @@ class battery_channel:
             'TEST': 1
             }.get(self.mode, 255)
 
-    def channel_backup(self):
+    def update_predictions(self):
+        #based on the history of capacity estimates, linearly interpolate predictions
+        y = np.delete(self.ekf_cap_est_mah, np.where(self.ekf_cap_est_mah < 0))
+        if y.size < 3:
+            self.pred_ekf_one = 0
+            self.pred_ekf_two = 0
+        else:
+            x = linspace(0, y.size-1, y.size)
+            p = np.polyfit(x, y, 1)
+            self.pred_ekf_one = polyval(p,  -600)
+            self.pred_ekf_two = polyval(p, -1200)
+        y = np.delete(self.cyc_cap_est_mah, np.where(self.cyc_cap_est_mah < 0))
+        if y.size < 3:
+            self.pred_cyc_one = 0
+            self.pred_cyc_two = 0
+        else:
+            x = linspace(0, y.size-1, y.size)
+            p = np.polyfit(x, y, 1)
+            self.pred_cyc_one = polyval(p,  -180)
+            self.pred_cyc_two = polyval(p,  -360)
+    
+    def backup(self):
         #save all the things to the json
         ch_vals = {"state" : self.state,
             "state_prev" : self.state_prev,

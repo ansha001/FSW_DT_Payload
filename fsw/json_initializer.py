@@ -1,5 +1,5 @@
 """ State variable initializer
-Create the json file that contains the backups of battery channel data and experiment parameters
+Create the files that contain the backups of battery channel data and experiment parameters
 AZ, 2025 April 21
 """
 
@@ -8,17 +8,19 @@ import os
 import numpy as np
     
 if __name__ == "__main__":
-    param_file = os.getcwd() + '/PARAMS_LIST.json'
-    fsw_file = os.getcwd() + '/FSW_BACKUP.json'
-    ch0_file = os.getcwd() + '/CH0_BACKUP.json'
-    ch1_file = os.getcwd() + '/CH1_BACKUP.json'
-    ch2_file = os.getcwd() + '/CH2_BACKUP.json'
+    param_file   = os.getcwd() + '/PARAMS_LIST.json'
+    fsw_file     = os.getcwd() + '/FSW_BACKUP.json'
+    ch0_file     = os.getcwd() + '/CH0_BACKUP.json'
+    ch1_file     = os.getcwd() + '/CH1_BACKUP.json'
+    ch2_file     = os.getcwd() + '/CH2_BACKUP.json'
+    ekf_cap_file = os.getcwd() + '/EKF_BACKUP.npy' 
+    cyc_cap_file = os.getcwd() + '/CYC_BACKUP.npy'
     
     param_vals = {"DT_CHECK_S" : 0.2,          # time step between important checks
         "DT_SENSORS_S" : 0.1,         # time step between reading sensors
         "DT_LOG_S"  : 1.0,            # time step between logs
         "DT_LOG2_S" : 60,             # time step between type 2 logs
-        "DT_LOG3_S" : 300,            # time step between type 3 logs
+        "DT_LOG3_S" : 600,            # time step between type 3 logs
         "DT_HEAT_S" : 160,            # time step between checking heater
         "DT_FAST_S" : 1,              # time step between fast loop of EKF
         "DT_SLOW_S" : 1000,           # time step between slow loop of EKF
@@ -58,7 +60,9 @@ if __name__ == "__main__":
         "CHG_VAL_INIT" : 9,
         "DIS_VAL_INIT" : 120,
         "NUM_CYCLES_PER_TEST" : 20,     # typically 20
-        "num_boots" : 0, }
+        "num_boots" : 0,
+        "ALPHA_EKF" : 0.04,
+        "ALPHA_CYC" : 0.01, }
 
     json_str = json.dumps(param_vals) #convert to json str
     
@@ -94,7 +98,7 @@ if __name__ == "__main__":
         "est_cov_state01" : 0,
         "est_cov_state10" : 0,
         "est_cov_state11" : 1e-7,
-        "est_cov_param" : 1e-1, }#covariance for param EKF
+        "est_cov_param" : 1e-1, }
 
     json_str = json.dumps(ch0_vals) #convert to json str
     
@@ -107,7 +111,21 @@ if __name__ == "__main__":
     with open(ch2_file, 'w') as json_out:
         json_out.write(json_str)
         
-    with open(ch0_file, 'r') as json_in:  #for bugging, read what we just wrote
+    #for debugging, read what we just wrote
+    with open(ch0_file, 'r') as json_in:  
         parsed = json.loads(json_in.read())
         print(json.dumps(parsed, indent=4, sort_keys=False))
+        
+    # make np array files for capacity estimate storage
+    ekf_cap_est_mah = -1*np.ones([1200,3])
+    cyc_cap_est_mah = -1*np.ones([ 360,3])  
+    np.save(ekf_cap_file, ekf_cap_est_mah)
+    np.save(cyc_cap_file, cyc_cap_est_mah)
     
+    #for debugging, read what we just wrote
+    ekf_cap_est_mah = np.load(ekf_cap_file)
+    cyc_cap_est_mah = np.load(cyc_cap_file)
+    print(ekf_cap_est_mah.size)
+    print(ekf_cap_est_mah)
+    print(cyc_cap_est_mah.size)
+    print(cyc_cap_est_mah)

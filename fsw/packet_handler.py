@@ -43,7 +43,7 @@ def save_buffer_backup():
     try:
         with open(BUFFER_BACKUP_FILE, 'w') as f:
             json.dump(reading_buffers, f)
-        print("[INFO] Buffer state saved.")
+        #print("[INFO] Buffer state saved.")
     except Exception as e:
         print(f"[ERROR] Failed to save buffer backup: {e}")
 
@@ -121,13 +121,18 @@ def build_packet_group_3(reading_list):
     for reading in reading_list:
         (
             time_s, 
-            soc0, volt0, cov00_0, cov11_0, cap0, param0, 
-            soc1, volt1, cov00_1, cov11_1, cap1, param1, 
-            soc2, volt2, cov00_2, cov11_2, cap2, param2
+            soc0, volt0, cov00_0, cov11_0, cap0, param0,
+            pr_ekf_one0, pr_ekf_two0, pr_cyc_one0, pr_cyc_two0,
+            soc1, volt1, cov00_1, cov11_1, cap1, param1,
+            pr_ekf_one1, pr_ekf_two1, pr_cyc_one1, pr_cyc_two1,
+            soc2, volt2, cov00_2, cov11_2, cap2, param2,
+            pr_ekf_one2, pr_ekf_two2, pr_cyc_one2, pr_cyc_two2,
         ) = reading
 
         timestamp_bytes = np.array([time_s], dtype=np.float16).tobytes()
-        estimator_data = struct.pack('<18f', soc0, volt0, cov00_0, cov11_0, cap0, param0, soc1, volt1, cov00_1, cov11_1, cap1, param1, soc2, volt2, cov00_2, cov11_2, cap2, param2)
+        estimator_data = struct.pack('<30f', soc0, volt0, cov00_0, cov11_0, cap0, param0, pr_ekf_one0, pr_ekf_two0, pr_cyc_one0, pr_cyc_two0,
+                                     soc1, volt1, cov00_1, cov11_1, cap1, param1, pr_ekf_one1, pr_ekf_two1, pr_cyc_one1, pr_cyc_two1,
+                                     soc2, volt2, cov00_2, cov11_2, cap2, param2, pr_ekf_one2, pr_ekf_two2, pr_cyc_one2, pr_cyc_two2)
         payload += timestamp_bytes + estimator_data
     return payload
 

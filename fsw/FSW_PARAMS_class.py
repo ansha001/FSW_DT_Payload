@@ -52,6 +52,8 @@ class FSW_PARAMS:
                 self.DIS_VAL_INIT = vals["DIS_VAL_INIT"]
                 self.NUM_CYCLES_PER_TEST = vals["NUM_CYCLES_PER_TEST"]    # typically 20
                 self.num_boots = vals["num_boots"]
+                self.ALPHA_EKF = vals["ALPHA_EKF"]
+                self.ALPHA_CYC = vals["ALPHA_CYC"]
         except Exception:
             print("Issue reading parameters")
             self.DT_CHECK_S = 0.2          # time step between important checks
@@ -99,6 +101,8 @@ class FSW_PARAMS:
             self.DIS_VAL_INIT = 120
             self.NUM_CYCLES_PER_TEST = 20    # typically 20
             self.num_boots = 0
+            self.ALPHA_EKF = 0.04
+            self.ALPHA_CYC = 0.01
         
     def update_parameter(self, file_name, variable, value):
         #TODO if we need to update the params in flight, this should write to the json file
