@@ -1,4 +1,5 @@
 import json
+import numpy as np
 
 class FSW_PARAMS:
     def __init__(self, file_name):
@@ -54,14 +55,21 @@ class FSW_PARAMS:
                 self.num_boots = vals["num_boots"]
                 self.ALPHA_EKF = vals["ALPHA_EKF"]
                 self.ALPHA_CYC = vals["ALPHA_CYC"]
+                
+                self.R_state = vals["R_state"] #0.015                     # Measurement noise covariance
+                Q1 = vals["Q_state1"]
+                Q2 = vals["Q_state2"]
+                self.Q_state = np.diag([Q1, Q2])     # Process noise covariance
+                self.Q_param = vals["Q_param"] #1e-1                      # Parameter process noise
+                self.R_param = vals["R_param"] #3.72725e-3                # Parameter measurement noise
         except Exception:
             print("Issue reading parameters")
             self.DT_CHECK_S = 0.2          # time step between important checks
             self.DT_SENSORS_S = 0.1         # time step between reading sensors
             self.DT_LOG_S  = 1.0            # time step between logs
-            self.DT_LOG2_S = 60             # time step between type 2 logs
-            self.DT_LOG3_S = 300            # time step between type 3 logs
-            self.DT_HEAT_S = 160            # time step between checking heater
+            self.DT_LOG2_S = 240             # time step between type 2 logs
+            self.DT_LOG3_S = 720            # time step between type 3 logs
+            self.DT_HEAT_S = 180            # time step between checking heater
             self.DT_FAST_S = 1              # time step between fast loop of EKF
             self.DT_SLOW_S = 1000           # time step between slow loop of EKF
             self.DT_BACKUP_S = 60
@@ -103,9 +111,14 @@ class FSW_PARAMS:
             self.num_boots = 0
             self.ALPHA_EKF = 0.04
             self.ALPHA_CYC = 0.01
+            
+            self.R_state = 0.015                     # Measurement noise covariance
+            self.Q_state = np.diag([1e-6, 1e-3])     # Process noise covariance
+            self.Q_param = 1e-1                      # Parameter process noise
+            self.R_param = 3.72725e-3                # Parameter measurement noise
         
     def update_parameter(self, file_name, variable, value):
-        #TODO if we need to update the params in flight, this should write to the json file
+        #If we need to update the params in flight, this should write to the json file
         print('updating params')
         parsed = {} #temporary hold for json info
         try:
@@ -119,3 +132,62 @@ class FSW_PARAMS:
             print("Issue updating parameter")
             return False
         return True
+    
+    def fetch_parameter_name(self, index):
+        # given index, return variable name
+        # for use with update_parameter, for example:
+        # PARAMS.update_parameter(params_file, "num_boots", PARAMS.num_boots)
+        name_list = ["DT_CHECK_S",         #  0
+                "DT_SENSORS_S",            #  1
+                "DT_LOG_S",                #  2
+                "DT_LOG2_S",               #  3
+                "DT_LOG3_S",               #  4
+                "DT_HEAT_S",               #  5
+                "DT_FAST_S",               #  6
+                "DT_SLOW_S",               #  7
+                "DT_BACKUP_S",             #  8
+                "CHG_LIMIT_V",             #  9
+                "DIS_LIMIT_V",             # 10
+                "FB_PULSE1_V",             # 11
+                "FB_PULSE2_V",             # 12
+                "SOC_PULSE1",              # 13
+                "SOC_PULSE2",              # 14
+                "TIME_CYCLE_REST_S",       # 15
+                "TIME_PULSE_REST_S",       # 16
+                "TIME_PULSE_TEST_S",       # 17
+                "TIME_TEST_REST_S",        # 18
+                "TEMP_MAX_C",              # 19
+                "TEMP_MIN_C",              # 20
+                "TEMP_HEATER_ON_C",        # 21
+                "TEMP_HEATER_OFF_C",       # 22
+                "TEMP_CHG_MAX_C",          # 23
+                "TEMP_CHG_UPPER_C",        # 24
+                "TEMP_CHG_LOWER_C",        # 25
+                "TEMP_CHG_MIN_C",          # 26
+                
+                "CHG_UPPER_SETPT_MA",      # 27
+                "CHG_LOWER_SETPT_MA",      # 28
+                "CHG_MIN_SETPT_MA",        # 29
+                
+                "CHG_SETPT_DELTA_MA",      # 30
+                "CHG_LOW_SETPT_MA",        # 31
+                "CHG_LOW_SETPT_DELTA_MA",  # 32
+                "DIS_SETPT_MA",            # 33
+                "DIS_SETPT_DELTA_MA",      # 34
+                "DIS_LOW_SETPT_MA",        # 35
+                "DIS_LOW_SETPT_DELTA_MA",  # 36
+                
+                "DIS_TRANS_MA",            # 37
+                "CHG_VAL_INIT",            # 38
+                "DIS_VAL_INIT",            # 39
+                "NUM_CYCLES_PER_TEST",     # 40
+                "num_boots",               # 41
+                "ALPHA_EKF",               # 42
+                "ALPHA_CYC",               # 43
+                
+                "R_state",                 # 44
+                "Q_state1",                # 45
+                "Q_state2",                # 46
+                "Q_param",                 # 47
+                "R_param"]                 # 48
+        return name_list[index]

@@ -355,11 +355,11 @@ if __name__ == "__main__":
     
     #create battery channel objects
     ch0 = battery_channel(channel=0,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(0),temp_c=read_temperature(0),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT,
-                          file_name=f0,ekf_cap_file=ekf_cap_file,cyc_cap_file=cyc_cap_file)
+                          file_name=f0,ekf_cap_file=ekf_cap_file,cyc_cap_file=cyc_cap_file, PARAMS=PARAMS)
     ch1 = battery_channel(channel=1,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(1),temp_c=read_temperature(1),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT,
-                          file_name=f1,ekf_cap_file=ekf_cap_file,cyc_cap_file=cyc_cap_file) 
+                          file_name=f1,ekf_cap_file=ekf_cap_file,cyc_cap_file=cyc_cap_file, PARAMS=PARAMS) 
     ch2 = battery_channel(channel=2,state='CHG',mode='CYCLE',cycle_count=0,volt_v=read_voltage(2),temp_c=read_temperature(2),chg_val=PARAMS.CHG_VAL_INIT,dis_val=PARAMS.DIS_VAL_INIT,
-                          file_name=f2,ekf_cap_file=ekf_cap_file,cyc_cap_file=cyc_cap_file)
+                          file_name=f2,ekf_cap_file=ekf_cap_file,cyc_cap_file=cyc_cap_file, PARAMS=PARAMS)
     
     # Track last mode switch timestamps per channel
     last_mode_switch = {
@@ -539,7 +539,8 @@ if __name__ == "__main__":
                     STATE_CODES.get(ch0.state, 255), STATE_CODES.get(ch1.state, 255), STATE_CODES.get(ch2.state, 255),  
                     MODE_CODES.get(ch0.mode, 255), MODE_CODES.get(ch1.mode, 255), MODE_CODES.get(ch2.mode, 255),  
                     get_CPU_temperature(),
-                    get_CPU_voltage()
+                    get_CPU_voltage(),
+                    get_CPU_frequency()
                 )
                 print(f"Logging group 2 at {reading_2[0]:.2f}s")
                 buffer_and_log_reading(2, reading_2)
@@ -552,11 +553,11 @@ if __name__ == "__main__":
                 reading_3 = (
                     time_iter_s,
                     ch0.est_soc, ch0.est_volt_v, ch0.est_cov_state[0, 0], ch0.est_cov_state[1, 1], ch0.est_capacity_as, ch0.est_cov_param,
-                    ch0.pred_ekf_one, ch0.pred_ekf_two, ch0.pred_cyc_one, ch0.pred_cyc_two,
+                    ch0.cyc_cap_est_mah[0], ch0.cc_capacity_mas/3600, ch0.pred_ekf_one, ch0.pred_ekf_two, ch0.pred_cyc_one, ch0.pred_cyc_two, 
                     ch1.est_soc, ch1.est_volt_v, ch1.est_cov_state[0, 0], ch1.est_cov_state[1, 1], ch1.est_capacity_as, ch1.est_cov_param,
-                    ch1.pred_ekf_one, ch1.pred_ekf_two, ch1.pred_cyc_one, ch1.pred_cyc_two,
+                    ch1.cyc_cap_est_mah[0], ch1.cc_capacity_mas/3600, ch1.pred_ekf_one, ch1.pred_ekf_two, ch1.pred_cyc_one, ch1.pred_cyc_two,
                     ch2.est_soc, ch2.est_volt_v, ch2.est_cov_state[0, 0], ch2.est_cov_state[1, 1], ch2.est_capacity_as, ch2.est_cov_param,
-                    ch2.pred_ekf_one, ch2.pred_ekf_two, ch2.pred_cyc_one, ch2.pred_cyc_two,
+                    ch2.cyc_cap_est_mah[0], ch2.cc_capacity_mas/3600, ch2.pred_ekf_one, ch2.pred_ekf_two, ch2.pred_cyc_one, ch2.pred_cyc_two,
                 )
                 buffer_and_log_reading(3, reading_3)
                 time_prev_log3_s = time_iter_s

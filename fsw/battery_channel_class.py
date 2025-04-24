@@ -3,7 +3,7 @@ import json
 from scipy.interpolate import interp1d
 from scipy.io import loadmat # Load the MATLAB data files
 class battery_channel:
-    def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c, chg_val, dis_val, file_name, ekf_cap_file, cyc_cap_file):
+    def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c, chg_val, dis_val, file_name, ekf_cap_file, cyc_cap_file, PARAMS):
         self.file_name = file_name
         self.channel = channel
         self.curr_ma = 0
@@ -12,10 +12,10 @@ class battery_channel:
         self.time_prev_s = -1
         self.time_iter_prev_s = -1
         self.update_act = False
-        self.R_state = 0.015                     # Measurement noise covariance
-        self.Q_state = np.diag([1e-6, 1e-3])     # Process noise covariance
-        self.Q_param = 1e-1                      # Parameter process noise
-        self.R_param = 3.72725e-3                # Parameter measurement noise
+        self.R_state = PARAMS.R_state #0.015                     # Measurement noise covariance
+        self.Q_state = PARAMS.Q_state #np.diag([1e-6, 1e-3])     # Process noise covariance
+        self.Q_param = PARAMS.Q_param #1e-1                      # Parameter process noise
+        self.R_param = PARAMS.R_param #3.72725e-3                # Parameter measurement noise
         self.update_counter = 0
         self.est_volt_v = 0
         self.pred_cyc_one = 0
@@ -41,6 +41,8 @@ class battery_channel:
                 self.state_prev = vals["state_prev"]           
                 self.mode = vals["mode"]
                 self.test_sequence = vals["test_sequence"]
+                self.total_cycles = vals["total_cycles"]
+                self.total_rpts = vals["total_rpts"]
                 self.volt_v = vals["volt_v"]
                 self.temp_c = vals["temp_c"]
                 self.cycle_count = vals["cycle_count"]
@@ -75,6 +77,8 @@ class battery_channel:
             self.state_prev = state
             self.mode = mode
             self.test_sequence = 0
+            self.total_cycles = 0
+            self.total_rpts = 0
             self.volt_v = volt_v     #most recent voltage measurement
             self.temp_c = temp_c
             self.curr_ma = 0
@@ -189,6 +193,7 @@ class battery_channel:
             if self.state == 'DIS_REST' and time_iter_s - self.time_resting_started_s > PARAMS.TIME_CYCLE_REST_S:
                 self.state = 'CHG'
                 self.cycle_count += 1
+                self.total_cycles += 1
                 self.cc_soc_mas = 0
                 self.time_prev_s = time_iter_s
         else:
@@ -306,6 +311,7 @@ class battery_channel:
                 self.test_sequence = 0
                 self.state = 'CHG'
                 self.cycle_count = 0
+                self.total_rpts += 1
 
     def channel_action(self, PARAMS):
         charge_setpoint_ma = 0
@@ -542,6 +548,8 @@ class battery_channel:
             "state_prev" : self.state_prev,
             "mode" : self.mode,
             "test_sequence" : self.test_sequence,
+            "total_cycles" : self.total_cycles,
+            "total_rpts" : self.total_rpts,
             "volt_v" : self.volt_v,     
             "temp_c" : self.temp_c,
             "cycle_count" : self.cycle_count,

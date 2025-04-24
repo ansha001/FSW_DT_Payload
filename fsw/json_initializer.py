@@ -19,9 +19,9 @@ if __name__ == "__main__":
     param_vals = {"DT_CHECK_S" : 0.2,          # time step between important checks
         "DT_SENSORS_S" : 0.1,         # time step between reading sensors
         "DT_LOG_S"  : 1.0,            # time step between logs
-        "DT_LOG2_S" : 60,             # time step between type 2 logs
-        "DT_LOG3_S" : 600,            # time step between type 3 logs
-        "DT_HEAT_S" : 160,            # time step between checking heater
+        "DT_LOG2_S" : 240,             # time step between type 2 logs
+        "DT_LOG3_S" : 720,            # time step between type 3 logs
+        "DT_HEAT_S" : 180,            # time step between checking heater
         "DT_FAST_S" : 1,              # time step between fast loop of EKF
         "DT_SLOW_S" : 1000,           # time step between slow loop of EKF
         "DT_BACKUP_S" : 60,           # time step between backups
@@ -62,7 +62,13 @@ if __name__ == "__main__":
         "NUM_CYCLES_PER_TEST" : 20,     # typically 20
         "num_boots" : 0,
         "ALPHA_EKF" : 0.04,
-        "ALPHA_CYC" : 0.01, }
+        "ALPHA_CYC" : 0.01,
+                  
+        "R_state" : 0.015,                     # Measurement noise covariance
+        "Q_state1" : 1e-6,     # Process noise covariance
+        "Q_state2" : 1e-3,     # Process noise covariance
+        "Q_param" : 1e-1,                      # Parameter process noise
+        "R_param" : 3.72725e-3, }                # Parameter measurement noise      
 
     json_str = json.dumps(param_vals) #convert to json str
     
@@ -77,6 +83,8 @@ if __name__ == "__main__":
         "state_prev" : "DIS",
         "mode" : "CYCLE",
         "test_sequence" : 0,
+        "total_cycles" : 0,
+        "total_rpts" : 0,
         "volt_v" : 0,     
         "temp_c" : 20,
         "cycle_count" : 99,

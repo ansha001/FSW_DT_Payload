@@ -108,11 +108,11 @@ def build_packet_group_2(reading_list):
             seq0, seq1, seq2, 
             state0, state1, state2, 
             mode0, mode1, mode2, 
-            cpu_temp, cpu_volt
+            cpu_temp, cpu_volt, cpu_freq
         ) = reading
 
         int_part = struct.pack('<3B H 3H 3B 3B 3B', cyc0, cyc1, cyc2, resets, tms0, tms1, tms2, seq0, seq1, seq2, state0, state1, state2, mode0, mode1, mode2)
-        float_part = np.array([time_s, cpu_temp, cpu_volt], dtype=np.float16).tobytes()
+        float_part = np.array([time_s, cpu_temp, cpu_volt, cpu_freq], dtype=np.float16).tobytes()
         payload += float_part + int_part
     return payload
 
@@ -121,18 +121,18 @@ def build_packet_group_3(reading_list):
     for reading in reading_list:
         (
             time_s, 
-            soc0, volt0, cov00_0, cov11_0, cap0, param0,
+            soc0, volt0, cov00_0, cov11_0, cap0, param0, cap_cyc0, cap_rpt0,
             pr_ekf_one0, pr_ekf_two0, pr_cyc_one0, pr_cyc_two0,
-            soc1, volt1, cov00_1, cov11_1, cap1, param1,
+            soc1, volt1, cov00_1, cov11_1, cap1, param1, cap_cyc1, cap_rpt1,
             pr_ekf_one1, pr_ekf_two1, pr_cyc_one1, pr_cyc_two1,
-            soc2, volt2, cov00_2, cov11_2, cap2, param2,
+            soc2, volt2, cov00_2, cov11_2, cap2, param2, cap_cyc2, cap_rpt2,
             pr_ekf_one2, pr_ekf_two2, pr_cyc_one2, pr_cyc_two2,
         ) = reading
 
         timestamp_bytes = np.array([time_s], dtype=np.float16).tobytes()
-        estimator_data = struct.pack('<30f', soc0, volt0, cov00_0, cov11_0, cap0, param0, pr_ekf_one0, pr_ekf_two0, pr_cyc_one0, pr_cyc_two0,
-                                     soc1, volt1, cov00_1, cov11_1, cap1, param1, pr_ekf_one1, pr_ekf_two1, pr_cyc_one1, pr_cyc_two1,
-                                     soc2, volt2, cov00_2, cov11_2, cap2, param2, pr_ekf_one2, pr_ekf_two2, pr_cyc_one2, pr_cyc_two2)
+        estimator_data = struct.pack('<36f', soc0, volt0, cov00_0, cov11_0, cap0, param0, cap_cyc0, cap_rpt0, pr_ekf_one0, pr_ekf_two0, pr_cyc_one0, pr_cyc_two0,
+                                     soc1, volt1, cov00_1, cov11_1, cap1, param1, cap_cyc1, cap_rpt1, pr_ekf_one1, pr_ekf_two1, pr_cyc_one1, pr_cyc_two1,
+                                     soc2, volt2, cov00_2, cov11_2, cap2, param2, cap_cyc2, cap_rpt2, pr_ekf_one2, pr_ekf_two2, pr_cyc_one2, pr_cyc_two2)
         payload += timestamp_bytes + estimator_data
     return payload
 
@@ -255,6 +255,16 @@ def handle_request_packet(packet: bytes) -> bytes:
         print("Resend request received.")
         return get_last_sent_packet()
 
+    elif req_type == 3:
+        print("Update parameter request received.")
+        # TODO parse payload
+        param_index = struct.unpack('<B', payload[0:1])[0]
+        param_value = struct.unpack('<f', payload[-4:])[0]
+        param_name = PARAMS.fetch_parameter_name(param_index)
+        print('Parameter: '+param_name+', Value: %8.5f' % param_value)
+        PARAMS.update_parameter(params_file, param_name, param_value)
+        return None
+    
     elif req_type == 2:
         print(f"Specific packet request received with argument: {payload}")
         requested_group, requested_index = parse_specific_request_argument(payload)
