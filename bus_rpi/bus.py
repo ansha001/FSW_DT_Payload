@@ -64,12 +64,12 @@ def parse_response_packet(packet: bytes):
 
     return message_type, payload
 
-def send_request(ser: serial.Serial, message_type: int = MESSAGE_TYPE_SEND_NEXT, argument: str = ""):
+def send_request(ser: serial.Serial, message_type: int, argument: bytes = b""):
     packet = build_packet(message_type, argument)
     ser.write(packet)
-    print(f"[INFO] Sent packet with type={message_type}, argument='{argument}'")
+    print(f"[INFO] Sent request: type={message_type}")
 
-def read_response(ser: serial.Serial, last_argument_sent=None):
+def read_response(ser: serial.Serial):
     if ser.in_waiting >= 17:
         header_and_size = ser.read(12)
         if header_and_size[:8] != HEADER:
@@ -77,71 +77,82 @@ def read_response(ser: serial.Serial, last_argument_sent=None):
             return
 
         size = struct.unpack('<I', header_and_size[8:12])[0]
-        remaining = size + 4 + 1  # TYPE + PAYLOAD + CRC
+        remaining = size + 5  # TYPE + PAYLOAD + CRC
         rest = ser.read(remaining)
         packet = header_and_size + rest
 
         try:
             group_id, payload = struct.unpack('<B', packet[12:13])[0], packet[13:-4]
-            index = struct.unpack('<I', payload[:4])[0]  # get index from payload
-            print(f"[RECEIVED] Group: {group_id}, Index: {index}, Payload Length: {len(payload)} bytes")
+            index = struct.unpack('<I', payload[:4])[0]
+            print(f"[RECEIVED] Group: {group_id}, Index: {index}, Payload Size: {len(payload)} bytes")
 
-            filename = f"{group_id}_{index}.bin"
             folder = f"received_logs/group{group_id}"
             os.makedirs(folder, exist_ok=True)
+            filename = f"{group_id}_{index}.bin"
             with open(os.path.join(folder, filename), 'wb') as f:
                 f.write(packet)
 
         except Exception as e:
             print(f"[ERROR] Failed to parse response: {e}")
     else:
-        print("[INFO] No response yet.")
+        print("[INFO] No response received.")
 
 def main():
     print(f"[INFO] Connecting to serial port {SERIAL_PORT} at {BAUD_RATE} baud")
     try:
         with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=TIMEOUT_SEC) as ser:
-            last_argument_sent = None
+            last_sent_time = time.time()
+
             while True:
-                user_input = input("Enter command (n=next, r=resend, s <type>_<index>, k for kill, b for reboot): ").strip()
-                if user_input == 'r':
-                    send_request(ser, MESSAGE_TYPE_RESEND_LAST)
-                    last_argument_sent = None
-                elif user_input == 'n':
+                now = time.time()
+
+                if now - last_sent_time > 10:
+                    # auto send next packet every 10 seconds
                     send_request(ser, MESSAGE_TYPE_SEND_NEXT)
-                    last_argument_sent = None
-                elif user_input.startswith("s "):
-                    argument = user_input.split(" ", 1)[1]
-                    send_request(ser, MESSAGE_TYPE_REQUEST_SPECIFIC, argument=argument)
-                    last_argument_sent = argument
-                elif user_input == 'k':
-                    send_request(ser, MESSAGE_TYPE_SHUTDOWN)
-                    last_argument_sent = None
-                elif user_input == 'b':
-                    send_request(ser, MESSAGE_TYPE_REBOOT)
-                    last_argument_sent = None
+                    last_sent_time = now
 
-                elif user_input.startswith("p "):
+                user_input = input("Enter 0=resend, 1=next, 2=specify, 3=update param, 4=shutdown, 5=reboot (Enter to continue): ").strip()
+
+                if user_input == "":
+                    pass  # continue auto sending
+
+                elif user_input == "0":
+                    send_request(ser, MESSAGE_TYPE_RESEND_LAST)
+
+                elif user_input == "1":
+                    send_request(ser, MESSAGE_TYPE_SEND_NEXT)
+
+                elif user_input.startswith("2"):
                     try:
-                        parts = user_input.split()
-                        param_index = int(parts[1])
-                        param_value = float(parts[2])
+                        arg = input("Enter group_index (e.g., 2_5): ").strip()
+                        argument_bytes = arg.encode('utf-8')
+                        send_request(ser, MESSAGE_TYPE_REQUEST_SPECIFIC, argument=argument_bytes)
+                    except Exception as e:
+                        print(f"[ERROR] Invalid argument: {e}")
 
+                elif user_input.startswith("3"):
+                    try:
+                        param_index = int(input("Enter parameter index (integer): ").strip())
+                        param_value = float(input("Enter new parameter value (float): ").strip())
                         param_index_bytes = struct.pack('<B', param_index)
                         param_value_bytes = struct.pack('<f', param_value)
                         argument_bytes = param_index_bytes + param_value_bytes
-
                         send_request(ser, MESSAGE_TYPE_UPDATE_PARAMS, argument=argument_bytes)
                     except Exception as e:
-                        print(f"[ERROR] Invalid param update command format: {e}")
-                        continue
+                        print(f"[ERROR] Invalid parameter update input: {e}")
+
+                elif user_input == "4":
+                    send_request(ser, MESSAGE_TYPE_SHUTDOWN)
+
+                elif user_input == "5":
+                    send_request(ser, MESSAGE_TYPE_REBOOT)
+
                 else:
-                    print("[INFO] Unknown command. Use 'n', 'r', 's <type>_<index>', k or b")
-                    continue
+                    print("[WARN] Invalid command.")
 
                 time.sleep(1)
-                read_response(ser, last_argument_sent=last_argument_sent)
-                time.sleep(5)
+                read_response(ser)
+                time.sleep(1)
 
     except serial.SerialException as e:
         print(f"[ERROR] Serial communication error: {e}")
