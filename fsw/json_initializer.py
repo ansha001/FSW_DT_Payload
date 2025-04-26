@@ -21,7 +21,7 @@ if __name__ == "__main__":
         "DT_LOG_S"  : 1.0,            # time step between logs
         "DT_LOG2_S" : 240,             # time step between type 2 logs
         "DT_LOG3_S" : 720,            # time step between type 3 logs
-        "DT_HEAT_S" : 180,            # time step between checking heater
+        "DT_HEAT_S" : 90,            # time step between checking heater
         "DT_FAST_S" : 1,              # time step between fast loop of EKF
         "DT_SLOW_S" : 1000,           # time step between slow loop of EKF
         "DT_BACKUP_S" : 60,           # time step between backups
@@ -37,16 +37,16 @@ if __name__ == "__main__":
         "TIME_TEST_REST_S" : 3600,    # time to rest before and after char test, seconds       [NOMINALLY  1 HOUR]
         "TEMP_MAX_C" :  65,           # above this, go to safe mode
         "TEMP_MIN_C" : -10,           # below this, go to safe mode
-        "TEMP_HEATER_ON_C"  : 10,     # below this, turn heater on
-        "TEMP_HEATER_OFF_C" : 25,     # above this, turn heater off
+        "TEMP_HEATER_ON_C"  : 22,     # below this, turn heater on
+        "TEMP_HEATER_OFF_C" : 30,     # above this, turn heater off
         "TEMP_CHG_MAX_C"   : 60,      # above this, stop charging
-        "TEMP_CHG_UPPER_C" : 15,      # above this, charge setpoint is -40 mA
-        "TEMP_CHG_LOWER_C" : 5,       # above this, charge setpoint is -10 mA
+        "TEMP_CHG_UPPER_C" : 19,      # above this, charge setpoint is -45 mA
+        "TEMP_CHG_LOWER_C" : 10,       # above this, charge setpoint is -27 mA
         "TEMP_CHG_MIN_C"   : 0,       # below this, stop charging
         
         "CHG_UPPER_SETPT_MA" : -45,   # nominal setpoint
-        "CHG_LOWER_SETPT_MA" : -10,   # cold setpoint
-        "CHG_MIN_SETPT_MA"   : -8,    # minimum setpoint
+        "CHG_LOWER_SETPT_MA" : -27,   # cold setpoint
+        "CHG_MIN_SETPT_MA"   : -10,    # minimum setpoint
         
         "CHG_SETPT_DELTA_MA" : 0.5,     # if charging current is outside bound, increment potentiometer
         "CHG_LOW_SETPT_MA" : -10,       # setpoint for 1/10 C charging
@@ -59,7 +59,7 @@ if __name__ == "__main__":
         "DIS_TRANS_MA" : 4.9,           #current to transition to low current mode
         "CHG_VAL_INIT" : 9,
         "DIS_VAL_INIT" : 120,
-        "NUM_CYCLES_PER_TEST" : 20,     # typically 20
+        "NUM_CYCLES_PER_TEST" : 200,     # typically 20
         "num_boots" : 0,
         "ALPHA_EKF" : 0.04,
         "ALPHA_CYC" : 0.01,
@@ -87,7 +87,7 @@ if __name__ == "__main__":
         "total_rpts" : 0,
         "volt_v" : 0,     
         "temp_c" : 20,
-        "cycle_count" : 99,
+        "cycle_count" : 0,
         "chg_val" : 9,
         "dis_val" : 120,
         "chg_low_val" : 200,
@@ -99,6 +99,7 @@ if __name__ == "__main__":
         "update_act" : False,
         "cc_capacity_mas" : 0,
         "cc_soc_mas" : 0,
+        "last_cyc_cap_mah" : -1,
         "R_SHUNT_OHMS" : 1.0,
         "est_capacity_as" : 0.0476705 * 3600,   # Initial capacity in As
         "est_soc" : 0,

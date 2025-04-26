@@ -190,4 +190,15 @@ class FSW_PARAMS:
                 "Q_state2",                # 46
                 "Q_param",                 # 47
                 "R_param"]                 # 48
-        return name_list[index]
+        if index >= len(name_list) or index < 0:
+            return None
+        else:
+            return name_list[index]
+    
+    def fetch_parameter_index(self, param_name):
+        # this will use the "fetch parameter name" fxn so we only need to maintain one list
+        # it seems hacky, but will actually reduce chance we mess something
+        for i in range(99):
+            if param_name == fetch_parameter_name(i):
+                return i
+        return -1

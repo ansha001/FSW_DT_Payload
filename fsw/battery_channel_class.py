@@ -56,6 +56,7 @@ class battery_channel:
                 self.en_cur_state = vals["en_cur_state"]
                 self.cc_capacity_mas = vals["cc_capacity_mas"]
                 self.cc_soc_mas = vals["cc_soc_mas"]
+                self.last_cyc_cap_mah = vals["last_cyc_cap_mah"]
                 self.R_SHUNT_OHMS = vals["R_SHUNT_OHMS"]
                 
                 self.est_capacity_as = vals["est_capacity_as"]
@@ -98,6 +99,7 @@ class battery_channel:
             self.update_act = False
             self.cc_capacity_mas = 0
             self.cc_soc_mas = 0
+            self.last_cyc_cap_mah = -1
             self.R_SHUNT_OHMS = 1.0
             
             self.est_capacity_as = 0.0476705 * 3600   # Initial capacity in As
@@ -177,11 +179,12 @@ class battery_channel:
                 self.state = 'DIS_REST'
                 self.time_resting_started_s = time_iter_s
                 # move all entries down to make room for new entry
+                self.last_cyc_cap_mah = (1/3600)*self.cc_soc_mas
                 temp = self.cyc_cap_est_mah[0] #latest entry
                 if temp < 0:
                     temp = (1/3600)*self.cc_soc_mas
                 self.cyc_cap_est_mah[1:]=self.cyc_cap_est_mah[:-1]
-                self.cyc_cap_est_mah[0] = (1-PARAMS.ALPHA_CYC)*temp + PARAMS.ALPHA_CYC*(1/3600)*self.cc_soc_mas
+                self.cyc_cap_est_mah[0] = (1-PARAMS.ALPHA_CYC)*temp + PARAMS.ALPHA_CYC*self.last_cyc_cap_mah
             elif self.state == 'DIS':
                 self.cc_soc_mas = self.cc_soc_mas - self.curr_ma * (time_iter_s - self.time_prev_s)
                 self.time_prev_s = time_iter_s
@@ -400,7 +403,7 @@ class battery_channel:
         if charge_setpoint_ma < 0:
             self.en_chg_state = True
 
-    def state_estimate(self, meas_volt_v, meas_curr_ma, time_iter_s):
+    def state_estimate(self, meas_volt_v, meas_curr_ma, time_iter_s, PARAMS):
         meas_curr_a = meas_curr_ma / 1000
          
         # Compute time step
@@ -528,19 +531,19 @@ class battery_channel:
             self.pred_ekf_one = 0
             self.pred_ekf_two = 0
         else:
-            x = linspace(0, y.size-1, y.size)
+            x = np.linspace(0, y.size-1, y.size)
             p = np.polyfit(x, y, 1)
-            self.pred_ekf_one = polyval(p,  -600)
-            self.pred_ekf_two = polyval(p, -1200)
+            self.pred_ekf_one = np.polyval(p,  -600)
+            self.pred_ekf_two = np.polyval(p, -1200)
         y = np.delete(self.cyc_cap_est_mah, np.where(self.cyc_cap_est_mah < 0))
         if y.size < 3:
             self.pred_cyc_one = 0
             self.pred_cyc_two = 0
         else:
-            x = linspace(0, y.size-1, y.size)
+            x = np.linspace(0, y.size-1, y.size)
             p = np.polyfit(x, y, 1)
-            self.pred_cyc_one = polyval(p,  -180)
-            self.pred_cyc_two = polyval(p,  -360)
+            self.pred_cyc_one = np.polyval(p,  -180)
+            self.pred_cyc_two = np.polyval(p,  -360)
     
     def backup(self):
         #save all the things to the json
@@ -564,6 +567,7 @@ class battery_channel:
             "update_act" : self.update_act,
             "cc_capacity_mas" : self.cc_capacity_mas,
             "cc_soc_mas" : self.cc_soc_mas,
+            "last_cyc_cap_mah" : self.last_cyc_cap_mah, 
             "R_SHUNT_OHMS" : self.R_SHUNT_OHMS,
             "est_capacity_as" : self.est_capacity_as,
             "est_soc" : self.est_soc,

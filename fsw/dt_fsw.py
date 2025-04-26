@@ -45,6 +45,8 @@ f0 = os.getcwd() + '/CH0_BACKUP.json'
 f1 = os.getcwd() + '/CH1_BACKUP.json'
 f2 = os.getcwd() + '/CH2_BACKUP.json'
 
+heater_on = False
+
 bus = smbus2.SMBus(1)
 
 file_name = 'ZZ_log_'
@@ -54,7 +56,7 @@ while os.path.exists(file_name + str(trial)+ '.csv'):
 file_name = file_name + str(trial) + '.csv'
 header = ['Time (s)','Temp0','Temp1','Temp2','Temp_CPU','Volt0','Volt1','Volt2','Volt_CPU','Curr0','Curr1','Curr2','Cyc0','Cyc1','Cyc2','Seq0','Seq1','Seq2',
           'disval0','disval1','disval2','dislowval0','dislowval1','dislowval2','chgval0','chgval1','chgval2','chglowval0','chglowval1','chglowval2',
-          'estSOC0','estSOC1','estSOC2','estCAP0','estCAP1','estCAP2','estV0','estV1','estV2']
+          'estSOC0','estSOC1','estSOC2','estCAP0','estCAP1','estCAP2','estV0','estV1','estV2','heater_on?']
 with open(file_name, 'w', encoding='UTF8', newline='') as f:
     writer = csv.writer(f)
     writer.writerow(header)
@@ -243,7 +245,7 @@ def log_sensor_data(time_s, data, ch0, ch1, ch2):
                          str(ch0.dis_val),str(ch1.dis_val),str(ch2.dis_val),str(ch0.dis_low_val),str(ch1.dis_low_val),str(ch2.dis_low_val),
                          str(ch0.chg_val),str(ch1.chg_val),str(ch2.chg_val),str(ch0.chg_low_val),str(ch1.chg_low_val),str(ch2.chg_low_val),
                          str(ch0.est_soc),str(ch1.est_soc),str(ch2.est_soc),str(ch0.est_capacity_as),str(ch1.est_capacity_as),str(ch2.est_capacity_as),
-                         str(ch0.est_volt_v),str(ch1.est_volt_v),str(ch2.est_volt_v)])
+                         str(ch0.est_volt_v),str(ch1.est_volt_v),str(ch2.est_volt_v),str(heater_on)])
 
 def update_actuators(ch):
     #set GPIO first
@@ -326,6 +328,7 @@ def safe_board(cell = -1):
         set_wiper(ADDRS.POT_ADDRS[3], ADDRS.POT_REGS[2], 0, mode="block")
         set_wiper(ADDRS.POT_ADDRS[3], ADDRS.POT_REGS[3], 0, mode="block")
         GPIO.output(ADDRS.EN_HEATER_GPIO, GPIO.LOW)
+        heater_on = False
         print('board safe')
     else:
         #set only that channel to safe settings
@@ -502,31 +505,32 @@ if __name__ == "__main__":
                     ch0.curr_ma, ch1.curr_ma, ch2.curr_ma,
                     ch0.temp_c, ch1.temp_c, ch2.temp_c
                 )
-                buffer_and_log_reading(1, reading_1)
-                save_buffer_backup()
+                #buffer_and_log_reading(1, reading_1)
+                #save_buffer_backup()
                 
-                #print('Tempera: %5.2f, %5.2f, %5.2f' % (temp_iter_c[0], temp_iter_c[1], temp_iter_c[2]))
-                #print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
-                #print('Current: %5.2f, %5.2f, %5.2f' % (curr_iter_ma[0], curr_iter_ma[1], curr_iter_ma[2]))
+                print('Tempera: %5.2f, %5.2f, %5.2f' % (temp_iter_c[0], temp_iter_c[1], temp_iter_c[2]))
+                print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
+                print('Current: %5.2f, %5.2f, %5.2f' % (curr_iter_ma[0], curr_iter_ma[1], curr_iter_ma[2]))
                 #print('dis_val: %5.2f, %5.2f, %5.2f' % (ch0.dis_val, ch1.dis_val, ch2.dis_val))
                 #print('dis_low: %5.2f, %5.2f, %5.2f' % (ch0.dis_low_val, ch1.dis_low_val, ch2.dis_low_val))
                 #print('chg_val: %5.2f, %5.2f, %5.2f' % (ch0.chg_val, ch1.chg_val, ch2.chg_val))
                 #print('chg_low: %5.2f, %5.2f, %5.2f' % (ch0.chg_low_val, ch1.chg_low_val, ch2.chg_low_val))
-                #print('ch_stat:'+ch0.state+','+ch1.state+','+ch2.state)
-                #print('ch_mode:'+ch0.mode+','+ch1.mode+','+ch2.mode)
+                print('ch_stat:'+ch0.state+','+ch1.state+','+ch2.state)
+                print('ch_mode:'+ch0.mode+','+ch1.mode+','+ch2.mode)
                 #print('Test_sq: %3.1f, %3.1f, %3.1f' % (ch0.test_sequence, ch1.test_sequence, ch2.test_sequence))
                 #print('SOC_est: %5.2f, %5.2f, %5.2f' % (ch0.est_soc, ch1.est_soc, ch2.est_soc))
                 #print('CAP est: %5.2f, %5.2f, %5.2f' % (ch0.est_capacity_as, ch1.est_capacity_as, ch2.est_capacity_as))
+                print('heater?: '+str(heater_on))
                 time_prev_log_s = time_iter_s
                 
             if time_iter_s > time_prev_fast_s + PARAMS.DT_FAST_S:
                 #fast loop EKF things, state estimator
                 if ch0.mode == 'CYCLE':
-                    ch0.state_estimate(volt_iter_v[0], curr_iter_ma[0], time_iter_s)
+                    ch0.state_estimate(volt_iter_v[0], curr_iter_ma[0], time_iter_s, PARAMS)
                 if ch1.mode == 'CYCLE':
-                    ch1.state_estimate(volt_iter_v[1], curr_iter_ma[1], time_iter_s)
+                    ch1.state_estimate(volt_iter_v[1], curr_iter_ma[1], time_iter_s, PARAMS)
                 if ch2.mode == 'CYCLE':
-                    ch2.state_estimate(volt_iter_v[2], curr_iter_ma[2], time_iter_s)
+                    ch2.state_estimate(volt_iter_v[2], curr_iter_ma[2], time_iter_s, PARAMS)
                 time_prev_fast_s = time_iter_s
                 
             if time_iter_s > time_prev_log2_s + PARAMS.DT_LOG2_S:
@@ -542,8 +546,8 @@ if __name__ == "__main__":
                     get_CPU_voltage(),
                     get_CPU_frequency()
                 )
-                print(f"Logging group 2 at {reading_2[0]:.2f}s")
-                buffer_and_log_reading(2, reading_2)
+                #print(f"Logging group 2 at {reading_2[0]:.2f}s")
+                #buffer_and_log_reading(2, reading_2)
                 time_prev_log2_s = time_iter_s
 
             if time_iter_s > time_prev_log3_s + PARAMS.DT_LOG3_S:
@@ -553,21 +557,23 @@ if __name__ == "__main__":
                 reading_3 = (
                     time_iter_s,
                     ch0.est_soc, ch0.est_volt_v, ch0.est_cov_state[0, 0], ch0.est_cov_state[1, 1], ch0.est_capacity_as, ch0.est_cov_param,
-                    ch0.cyc_cap_est_mah[0], ch0.cc_capacity_mas/3600, ch0.pred_ekf_one, ch0.pred_ekf_two, ch0.pred_cyc_one, ch0.pred_cyc_two, 
+                    ch0.last_cyc_cap_mah, ch0.cc_capacity_mas/3600, ch0.pred_ekf_one, ch0.pred_ekf_two, ch0.pred_cyc_one, ch0.pred_cyc_two, 
                     ch1.est_soc, ch1.est_volt_v, ch1.est_cov_state[0, 0], ch1.est_cov_state[1, 1], ch1.est_capacity_as, ch1.est_cov_param,
-                    ch1.cyc_cap_est_mah[0], ch1.cc_capacity_mas/3600, ch1.pred_ekf_one, ch1.pred_ekf_two, ch1.pred_cyc_one, ch1.pred_cyc_two,
+                    ch1.last_cyc_cap_mah, ch1.cc_capacity_mas/3600, ch1.pred_ekf_one, ch1.pred_ekf_two, ch1.pred_cyc_one, ch1.pred_cyc_two,
                     ch2.est_soc, ch2.est_volt_v, ch2.est_cov_state[0, 0], ch2.est_cov_state[1, 1], ch2.est_capacity_as, ch2.est_cov_param,
-                    ch2.cyc_cap_est_mah[0], ch2.cc_capacity_mas/3600, ch2.pred_ekf_one, ch2.pred_ekf_two, ch2.pred_cyc_one, ch2.pred_cyc_two,
+                    ch2.last_cyc_cap_mah, ch2.cc_capacity_mas/3600, ch2.pred_ekf_one, ch2.pred_ekf_two, ch2.pred_cyc_one, ch2.pred_cyc_two,
                 )
-                buffer_and_log_reading(3, reading_3)
+                #buffer_and_log_reading(3, reading_3)
                 time_prev_log3_s = time_iter_s
                 
             if time_iter_s > time_prev_heat_s + PARAMS.DT_HEAT_S:
                 #check if heater should be on
                 if statistics.median(temp_iter_c) < PARAMS.TEMP_HEATER_ON_C:
                     GPIO.output(ADDRS.EN_HEATER_GPIO, GPIO.HIGH)
+                    heater_on = True
                 elif statistics.median(temp_iter_c) > PARAMS.TEMP_HEATER_OFF_C:
                     GPIO.output(ADDRS.EN_HEATER_GPIO, GPIO.LOW)
+                    heater_on = False
                 time_prev_heat_s = time_iter_s
                 
             if time_iter_s > time_prev_backup_s + PARAMS.DT_BACKUP_S:

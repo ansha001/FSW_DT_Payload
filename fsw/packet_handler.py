@@ -262,7 +262,11 @@ def handle_request_packet(packet: bytes) -> bytes:
         param_value = struct.unpack('<f', payload[-4:])[0]
         param_name = PARAMS.fetch_parameter_name(param_index)
         print('Parameter: '+param_name+', Value: %8.5f' % param_value)
-        PARAMS.update_parameter(params_file, param_name, param_value)
+        if param_name is not None:
+            print("Updating param")
+            PARAMS.update_parameter(params_file, param_name, param_value)
+        else:
+            print("Invalid param index number")
         return None
     
     elif req_type == 2:
