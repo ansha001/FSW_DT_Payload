@@ -138,3 +138,32 @@ if __name__ == "__main__":
     print(ekf_cap_est_mah)
     print(cyc_cap_est_mah.size)
     print(cyc_cap_est_mah)
+
+    # initialize buffer backups for groups 1, 2, 3
+    LOG_BASE_DIR = os.getcwd() + '/log'
+    os.makedirs(LOG_BASE_DIR, exist_ok=True)
+
+    buffers_backup = {
+        "1": [],
+        "2": [],
+        "3": []
+    }
+
+    with open(os.path.join(LOG_BASE_DIR, 'buffers_backup.json'), 'w') as f:
+        json.dump(buffers_backup, f)
+    print("[INFO] initialized buffer backup to empty lists")
+
+    # initialize pointers for each group
+    for group_id in [1, 2, 3]:
+        group_folder = os.path.join(LOG_BASE_DIR, f'group{group_id}')
+        os.makedirs(group_folder, exist_ok=True)
+        pointer_path = os.path.join(group_folder, '.last_sent_pointer')
+        with open(pointer_path, 'w') as f:
+            f.write('0')
+        print(f"[INFO] initialized pointer for group {group_id} to 0.")
+
+    # initialize global pointer
+    global_pointer_path = os.path.join(LOG_BASE_DIR, '.last_sent_group')
+    with open(global_pointer_path, 'w') as f:
+        f.write('0')
+    print("[INFO] initialized global pointer to 0")

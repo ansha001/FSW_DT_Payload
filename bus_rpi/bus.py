@@ -120,6 +120,21 @@ def main():
                 elif user_input == 'b':
                     send_request(ser, MESSAGE_TYPE_REBOOT)
                     last_argument_sent = None
+
+                elif user_input.startswith("p "):
+                    try:
+                        parts = user_input.split()
+                        param_index = int(parts[1])
+                        param_value = float(parts[2])
+
+                        param_index_bytes = struct.pack('<B', param_index)
+                        param_value_bytes = struct.pack('<f', param_value)
+                        argument_bytes = param_index_bytes + param_value_bytes
+
+                        send_request(ser, MESSAGE_TYPE_UPDATE_PARAMS, argument=argument_bytes)
+                    except Exception as e:
+                        print(f"[ERROR] Invalid param update command format: {e}")
+                        continue
                 else:
                     print("[INFO] Unknown command. Use 'n', 'r', 's <type>_<index>', k or b")
                     continue
