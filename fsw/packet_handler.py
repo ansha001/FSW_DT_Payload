@@ -4,6 +4,7 @@ import os
 import time
 import json
 import numpy as np
+from FSW_PARAMS_class import FSW_PARAMS
 
 HEADER = b'\x30\x20\x30\x20\x30\x20\x30\x20'
 
@@ -13,6 +14,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_BASE_DIR = os.path.join(BASE_DIR, 'log')
 CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
 BUFFER_BACKUP_FILE = os.path.join(LOG_BASE_DIR, 'buffers_backup.json')
+params_file = os.path.join(BASE_DIR, 'PARAMS_LIST.json')
+PARAMS = FSW_PARAMS(params_file)
 
 
 with open(CONFIG_FILE, 'r') as f:

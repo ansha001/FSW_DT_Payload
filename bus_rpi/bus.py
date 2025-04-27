@@ -21,19 +21,16 @@ MESSAGE_TYPE_REBOOT = 5
 def compute_crc32(data: bytes) -> int:
     return zlib.crc32(data)
 
-def build_packet(message_type: int, argument: str = "") -> bytes:
+def build_packet(message_type: int, argument: bytes = b"") -> bytes:
     """
     Builds a send packet in the format of [HEADER][SIZE][TYPE][ARGUMENT][CHECKSUM]
     """
     type_byte = struct.pack('<B', message_type)
 
-    if argument:
-        argument_bytes = argument.encode('utf-8')  # e.g., b"1_5"
-    else:
-        argument_bytes = b""
+    argument_bytes = argument
 
     payload = type_byte + argument_bytes
-    size = len(payload) + 8 # TYPE + ARG + CRC + size
+    size = len(payload) + 8  # TYPE + ARG + CRC + size
     size_bytes = struct.pack('<I', size)
     packet_without_checksum = size_bytes + payload
 
@@ -41,6 +38,7 @@ def build_packet(message_type: int, argument: str = "") -> bytes:
     checksum_bytes = struct.pack('<I', checksum)
 
     return HEADER + packet_without_checksum + checksum_bytes
+
 
 def parse_response_packet(packet: bytes):
     """
