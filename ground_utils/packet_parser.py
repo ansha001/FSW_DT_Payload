@@ -52,17 +52,15 @@ def parse_group_1_packet(payload: bytes):
     return parsed_entries
 
 def parse_group_2_packet(payload: bytes):
-    entry_size = struct.calcsize('<3e 3B H 3H 3B 3B 3B')  # 3 float16s + rest
+    entry_size = struct.calcsize('<4e 3B H 3H 3B 3B 3B')  # 4 float16s + ints
     parsed_entries = []
     total_entries = len(payload) // entry_size
 
     for i in range(total_entries):
         entry = payload[i * entry_size:(i + 1) * entry_size]
 
-        # first 3 float16 values: time, cpu_temp, cpu_volt
-        time_s, cpu_temp, cpu_volt = struct.unpack('<3e', entry[:6])
-        # int part
-        unpacked = struct.unpack('<3B H 3H 3B 3B 3B', entry[6:])
+        time_s, cpu_temp, cpu_volt, cpu_freq = struct.unpack('<4e', entry[:8])
+        unpacked = struct.unpack('<3B H 3H 3B 3B 3B', entry[8:])
 
         cycle_counts = unpacked[0:3]
         resets = unpacked[3]
@@ -73,30 +71,31 @@ def parse_group_2_packet(payload: bytes):
 
         parsed_entries.append({
             "time": time_s,
+            "cpu_temp": cpu_temp,
+            "cpu_volt": cpu_volt,
+            "cpu_freq": cpu_freq,
             "cycle_counts": cycle_counts,
             "resets": resets,
             "time_switches": time_switches,
             "test_sequences": test_sequences,
             "states": [STATE_NAMES.get(code, 'UNKNOWN') for code in state_codes],
             "modes": [MODE_NAMES.get(code, 'UNKNOWN') for code in mode_codes],
-            "cpu_temp": cpu_temp,
-            "cpu_volt": cpu_volt
         })
 
     return parsed_entries
 
 def parse_group_3_packet(payload: bytes):
-    entry_size = struct.calcsize('<e18f')
+    entry_size = 2 + struct.calcsize('<36f')  # timestamp + 36 float32s
     total_entries = len(payload) // entry_size
     parsed_entries = []
 
     for i in range(total_entries):
-        entry = payload[i * entry_size : (i + 1) * entry_size]
-        time_s, *estimator_data = struct.unpack('<e18f', entry)
+        entry = payload[i*entry_size:(i+1)*entry_size]
+        time_s = struct.unpack('<e', entry[:2])[0]
+        estimator_data = struct.unpack('<36f', entry[2:])
         channels = []
-    
         for j in range(3):
-            offset = j * 6
+            offset = j * 12
             channels.append({
                 "estimated_soc": estimator_data[offset + 0],
                 "estimated_voltage": estimator_data[offset + 1],
@@ -104,6 +103,12 @@ def parse_group_3_packet(payload: bytes):
                 "cov_state_11": estimator_data[offset + 3],
                 "capacity": estimator_data[offset + 4],
                 "cov_param": estimator_data[offset + 5],
+                "cap_cyc": estimator_data[offset+6],
+                "cap_rpt": estimator_data[offset+7],
+                "pred_ekf_one": estimator_data[offset + 8],
+                "pred_ekf_two": estimator_data[offset + 9],
+                "pred_cyc_one": estimator_data[offset + 10],
+                "pred_cyc_two": estimator_data[offset + 11],
             })
         parsed_entries.append({"time": time_s, "channels": channels})
 
@@ -138,7 +143,9 @@ def parse_bin_file(file_path):
             elif group_id == 3:
                 parsed = parse_group_3_packet(payload)
             else:
-                parsed = None  # Unknown group
+                parsed = {"group_id": group_id, "raw_payload": payload.hex()}
+            print(f"Parsed Group {group_id}, Index {index}:", parsed)
+            print("-"*60)
 
             if parsed is not None:
                 print(f"Parsed Group {group_id}, Index {index}: {parsed}")
@@ -220,5 +227,5 @@ def parse_folder(folder_path):
             parse_bin_file(os.path.join(folder_path, fname))
 
 if __name__ == '__main__':
-    file_path = input("Enter file_path:").strip()
+    file_path = input("Enter folder path:").strip()
     parse_folder(file_path)

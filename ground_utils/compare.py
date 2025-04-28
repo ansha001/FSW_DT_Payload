@@ -36,7 +36,7 @@ pd.DataFrame(group1_results).to_csv("ground_utils/group1_comparison.csv", index=
 
 
 # === GROUP 2 COMPARISON ===
-group2 = pd.read_csv("parsed_csv/group2_parsed.csv")
+group2 = pd.read_csv("ground_utils/parsed_csv/group2_parsed.csv")
 group2_results = []
 
 for _, row in group2.iterrows():
