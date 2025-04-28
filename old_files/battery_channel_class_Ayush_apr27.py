@@ -26,7 +26,7 @@ class battery_channel:
         self.pred_ekf_two = 0
 
         # New variables for beta estimation and capacity forecast
-        self.betaWindow = 100000  # Iteration count equivalent to 1e5 seconds
+        self.betaWindow = 1e5  # Iteration count equivalent to 1e5 seconds
         self.forecastHorizon = 6e5  # Seconds, kept for forecast calculation
         self.anchorCount = None  # Counter value at last beta update
         self.anchorCap = None  # Capacity at last beta update
@@ -238,14 +238,14 @@ class battery_channel:
             self.capPred = self.x_hat_param  # Initial forecast
         else:
             if self.update_counter_beta >= self.betaWindow:
-                delta_count = self.update_counter_beta #- self.anchorCount
-                if delta_count > 0:
+                delta_count = self.update_counter_beta - self.anchorCount
+                if delta_count == 0:
                     # Estimate beta_curr as degradation rate per iteration
-                    self.beta_curr = (self.x_hat_param - self.anchorCap) / delta_count  # Amp*secs/secs
+                    self.beta_curr = (self.x_hat_param - self.anchorCap) / self.betaWindow  # Amp*secs/secs
                 else:
                     self.beta_curr = 0
                 self.anchorCap = self.x_hat_param
-                #self.anchorCount = self.update_counter_beta
+                self.anchorCount = self.update_counter_beta
                 #self.nextBetaCount = self.betaWindow
                 # Adjust beta_curr to As/s and compute forecast
                 #dt_avg = dt  # Use current dt as an estimate
