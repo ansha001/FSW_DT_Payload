@@ -234,24 +234,24 @@ class battery_channel:
         if self.anchorCount is None:
             self.anchorCount = self.update_counter_beta
             self.anchorCap = self.x_hat_param
-            self.nextBetaCount = self.anchorCount + self.betaWindow
+            #self.nextBetaCount = self.anchorCount + self.betaWindow
             self.capPred = self.x_hat_param  # Initial forecast
         else:
-            if self.update_counter_beta >= self.nextBetaCount:
-                delta_count = self.update_counter_beta - self.anchorCount
+            if self.update_counter_beta >= self.betaWindow:
+                delta_count = self.update_counter_beta #- self.anchorCount
                 if delta_count > 0:
                     # Estimate beta_curr as degradation rate per iteration
                     self.beta_curr = (self.x_hat_param - self.anchorCap) / delta_count  # Amp*secs/secs
                 else:
                     self.beta_curr = 0
                 self.anchorCap = self.x_hat_param
-                self.anchorCount = self.update_counter_beta
-                self.nextBetaCount = self.betaWindow
+                #self.anchorCount = self.update_counter_beta
+                #self.nextBetaCount = self.betaWindow
                 # Adjust beta_curr to As/s and compute forecast
                 #dt_avg = dt  # Use current dt as an estimate
                 #beta_curr_as_s = self.beta_curr / dt_avg  # Convert to As/s
                 self.capPred = self.anchorCap + self.beta_curr * self.forecastHorizon  # As (Amp-secs)
-
+                self.update_counter_beta = 0
         self.x_hat_param_k_1 = self.x_hat_param
         self.est_soc = self.x_hat_state[0]
         self.est_volt_v = OCV_pred - self.x_hat_state[1] - Rs * meas_curr_a
