@@ -213,7 +213,7 @@ class battery_channel:
         # Parameter EKF - Update
         self.update_counter += 1
         self.update_counter_beta += 1
-        if self.update_counter >= 1000:
+        if self.update_counter >= 2100:
             P_param_pred = self.P_param + self.Q_param
             denom_param = C_param * P_param_pred * C_param + self.R_param
             if abs(denom_param) < 1e-10:
@@ -232,7 +232,7 @@ class battery_channel:
 
         # Beta Estimation and Capacity Forecast
         if self.anchorCount is None:
-            #self.anchorCount = self.update_counter_beta
+            self.anchorCount = self.update_counter_beta
             self.anchorCap = self.x_hat_param
             self.nextBetaCount = self.anchorCount + self.betaWindow
             self.capPred = self.x_hat_param  # Initial forecast
@@ -240,17 +240,17 @@ class battery_channel:
             if self.update_counter_beta >= self.nextBetaCount:
                 delta_count = self.update_counter_beta - self.anchorCount
                 if delta_count > 0:
-                    # Estimate beta_curr as capacity change per iteration
+                    # Estimate beta_curr as degradation rate per iteration
                     self.beta_curr = (self.x_hat_param - self.anchorCap) / delta_count  # Amp*secs/secs
                 else:
                     self.beta_curr = 0
                 self.anchorCap = self.x_hat_param
                 self.anchorCount = self.update_counter_beta
-                self.nextBetaCount = self.update_counter_beta + self.betaWindow
+                self.nextBetaCount = self.betaWindow
                 # Adjust beta_curr to As/s and compute forecast
-                dt_avg = dt  # Use current dt as an estimate
-                beta_curr_as_s = self.beta_curr / dt_avg  # Convert to As/s
-                self.capPred = self.anchorCap + beta_curr_as_s * self.forecastHorizon
+                #dt_avg = dt  # Use current dt as an estimate
+                #beta_curr_as_s = self.beta_curr / dt_avg  # Convert to As/s
+                self.capPred = self.anchorCap + self.beta_curr * self.forecastHorizon  # As (Amp-secs)
 
         self.x_hat_param_k_1 = self.x_hat_param
         self.est_soc = self.x_hat_state[0]
@@ -259,6 +259,7 @@ class battery_channel:
         self.est_cov_state = self.P_state
         self.est_cov_param = self.P_param
         self.meas_curr_a_k_1 = meas_curr_a
+        
 
     def backup(self):
         ch_vals = {
