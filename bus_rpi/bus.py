@@ -63,6 +63,7 @@ def parse_response_packet(packet: bytes):
     return message_type, payload
 
 def send_request(ser: serial.Serial, message_type: int, argument: bytes = b""):
+    ser.reset_input_buffer() # clear previous data in the buffer
     packet = build_packet(message_type, argument)
     ser.write(packet)
     print(f"[INFO] Sent request: type={message_type}")
@@ -99,32 +100,36 @@ def main():
     print(f"[INFO] Connecting to serial port {SERIAL_PORT} at {BAUD_RATE} baud")
     try:
         with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=TIMEOUT_SEC) as ser:
-            last_sent_time = time.time()
-
             while True:
-                now = time.time()
-
-                if now - last_sent_time > 10:
-                    # auto send next packet every 10 seconds
-                    send_request(ser, MESSAGE_TYPE_SEND_NEXT)
-                    last_sent_time = now
-
                 user_input = input("Enter 0=resend, 1=next, 2=specify, 3=update param, 4=shutdown, 5=reboot (Enter to continue): ").strip()
 
                 if user_input == "":
-                    pass  # continue auto sending
+                    pass  # continue waiting
 
                 elif user_input == "0":
                     send_request(ser, MESSAGE_TYPE_RESEND_LAST)
+                    time.sleep(1)
+                    read_response(ser)
 
                 elif user_input == "1":
-                    send_request(ser, MESSAGE_TYPE_SEND_NEXT)
+                    try:
+                        total_seconds = float(input("Enter time to keep sending (seconds): ").strip())
+                        start_time = time.time()
+                        while time.time() - start_time < total_seconds:
+                            send_request(ser, MESSAGE_TYPE_SEND_NEXT)
+                            time.sleep(1)
+                            read_response(ser)
+                            time.sleep(5)  # wait 5 seconds between each next request
+                    except Exception as e:
+                        print(f"[ERROR] Invalid input: {e}")
 
                 elif user_input.startswith("2"):
                     try:
                         arg = input("Enter group_index (e.g., 2_5): ").strip()
                         argument_bytes = arg.encode('utf-8')
                         send_request(ser, MESSAGE_TYPE_REQUEST_SPECIFIC, argument=argument_bytes)
+                        time.sleep(1)
+                        read_response(ser)
                     except Exception as e:
                         print(f"[ERROR] Invalid argument: {e}")
 
@@ -136,21 +141,23 @@ def main():
                         param_value_bytes = struct.pack('<f', param_value)
                         argument_bytes = param_index_bytes + param_value_bytes
                         send_request(ser, MESSAGE_TYPE_UPDATE_PARAMS, argument=argument_bytes)
+                        time.sleep(1)
+                        read_response(ser)
                     except Exception as e:
                         print(f"[ERROR] Invalid parameter update input: {e}")
 
                 elif user_input == "4":
                     send_request(ser, MESSAGE_TYPE_SHUTDOWN)
+                    time.sleep(1)
+                    read_response(ser)
 
                 elif user_input == "5":
                     send_request(ser, MESSAGE_TYPE_REBOOT)
+                    time.sleep(1)
+                    read_response(ser)
 
                 else:
                     print("[WARN] Invalid command.")
-
-                time.sleep(1)
-                read_response(ser)
-                time.sleep(1)
 
     except serial.SerialException as e:
         print(f"[ERROR] Serial communication error: {e}")
