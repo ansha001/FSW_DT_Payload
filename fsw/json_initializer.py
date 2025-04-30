@@ -36,6 +36,8 @@ if __name__ == "__main__":
         "DT_FAST_S" : 1,              # time step between fast loop of EKF
         "DT_SLOW_S" : 1000,           # time step between slow loop of EKF
         "DT_BACKUP_S" : 60,           # time step between backups
+        "MIN_MSG_SIZE":  8,
+        "MAX_MSG_SIZE": 13,
         "CHG_LIMIT_V" : 4.20,         # voltage to stop charging
         "DIS_LIMIT_V" : 2.75,         # voltage to stop discharging
         "FB_PULSE1_V" : 3.10,         # fallback voltage for 65% SOC
@@ -70,7 +72,7 @@ if __name__ == "__main__":
         "DIS_TRANS_MA" : 4.9,           #current to transition to low current mode
         "CHG_VAL_INIT" : 9,
         "DIS_VAL_INIT" : 120,
-        "NUM_CYCLES_PER_TEST" : 3,     # typically 20
+        "NUM_CYCLES_PER_TEST" : 20,     # typically 20
         "num_boots" : 0,
         "ALPHA_EKF" : 0.04,
         "ALPHA_CYC" : 0.01,
@@ -105,7 +107,7 @@ if __name__ == "__main__":
         "total_rpts" : 0,
         "volt_v" : 0,     
         "temp_c" : 20,
-        "cycle_count" : 0,
+        "cycle_count" : 19,
         "chg_val" : 9,
         "dis_val" : 120,
         "chg_low_val" : 200,
