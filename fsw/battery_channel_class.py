@@ -2,8 +2,9 @@ import numpy as np
 import json
 from scipy.interpolate import interp1d
 from scipy.io import loadmat # Load the MATLAB data files
+
 class battery_channel:
-    def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c, chg_val, dis_val, file_name, ekf_cap_file, cyc_cap_file, PARAMS):
+    def __init__(self, channel, state, mode, cycle_count, volt_v, temp_c, chg_val, dis_val, file_name, ekf_cap_file, cyc_cap_file, beta_cap_file, PARAMS):
         self.file_name = file_name
         self.channel = channel
         self.curr_ma = 0
@@ -16,12 +17,11 @@ class battery_channel:
         self.Q_state = PARAMS.Q_state #np.diag([1e-6, 1e-3])     # Process noise covariance
         self.Q_param = PARAMS.Q_param #1e-1                      # Parameter process noise
         self.R_param = PARAMS.R_param #3.72725e-3                # Parameter measurement noise
-        self.update_counter = 0
         self.est_volt_v = 0
-        self.pred_cyc_one = 0
-        self.pred_cyc_two = 0
-        self.pred_ekf_one = 0
-        self.pred_ekf_two = 0
+        
+        self.beta_window = PARAMS.beta_window
+        self.beta_prediction_rate = PARAMS.beta_prediction_rate
+        self.forecast_horizon = PARAMS.forecast_horizon
         
         # load cap estimate backups
         try:
@@ -29,10 +29,13 @@ class battery_channel:
             self.ekf_cap_est_mah = temp[:,channel]
             temp = np.load(cyc_cap_file)
             self.cyc_cap_est_mah = temp[:,channel]
+            temp = np.load(beta_cap_file)
+            self.beta_cap_est_as = temp[:,channel]
         except Exception:
             print('Error reading capacity files')
-            self.ekf_cap_est_mah = -1*np.ones([1200])
-            self.cyc_cap_est_mah = -1*np.ones([ 360])
+            self.ekf_cap_est_mah = -1*np.ones([PARAMS.NUM_EKF_CAP])
+            self.cyc_cap_est_mah = -1*np.ones([PARAMS.NUM_CYC_CAP])
+            self.beta_cap_est_as = -1*np.ones([PARAMS.NUM_BETA_CAP])
         
         try:
             with open(file_name, 'r') as json_in:
@@ -67,6 +70,12 @@ class battery_channel:
                 self.est_cov_state[1,0] = vals["est_cov_state10"] 
                 self.est_cov_state[1,1] = vals["est_cov_state11"] 
                 self.est_cov_param = vals["est_cov_param"] #covariance for param EKF
+                self.update_counter = vals["update_counter"]
+                self.update_counter_beta = vals["update_counter_beta"]
+                                
+                self.pred_cyc_mah = vals["pred_cyc_mah"]
+                self.pred_ekf_mah = vals["pred_ekf_mah"]
+                self.pred_beta_mah = vals["pred_beta_mah"]
                 
                 # EKF initializations 
                 self.P_state = self.est_cov_state     # State covariance
@@ -107,6 +116,12 @@ class battery_channel:
             self.est_volt_v = 0
             self.est_cov_state = np.zeros((2, 2))  # 2x2 covariance matrix for state EKF
             self.est_cov_param = -1 #covariance for param EKF
+            self.update_counter = 0
+            self.update_counter_beta = 0
+            
+            self.pred_cyc_mah = 0
+            self.pred_ekf_mah = 0
+            self.pred_beta_mah = 0
                 
             # EKF initializations 
             self.P_state = np.diag([1e-7, 1e-7])     # State covariance
@@ -121,11 +136,15 @@ class battery_channel:
         self.dx_by_dtheta_k_1 = np.zeros(2)
 
         # lookup tables as class attributes
-        rc_rs_values = loadmat(r'mat_files/RC_Rs_values_1.mat') 
-        rc_rs_values_charging = loadmat(r'mat_files/RC_Rs_values_1_charging.mat')
-        ocv_data = loadmat(r'mat_files/LIR2032_EEMB_Cell1_25C_OCV.mat')
-        data_cell2 = loadmat(r'mat_files/data_Cell2_25C.mat')
-
+        #rc_rs_values = loadmat(r'mat_files/RC_Rs_values_1.mat') 
+        #rc_rs_values_charging = loadmat(r'mat_files/RC_Rs_values_1_charging.mat')
+        #ocv_data = loadmat(r'mat_files/LIR2032_EEMB_Cell1_25C_OCV.mat')
+        #data_cell2 = loadmat(r'mat_files/data_Cell2_25C.mat')
+        rc_rs_values = loadmat(r'/home/dt/fsw/mat_files/RC_Rs_values_1.mat') 
+        rc_rs_values_charging = loadmat(r'/home/dt/fsw/mat_files/RC_Rs_values_1_charging.mat')
+        ocv_data = loadmat(r'/home/dt/fsw/mat_files/LIR2032_EEMB_Cell1_25C_OCV.mat')
+        data_cell2 = loadmat(r'/home/dt/fsw/mat_files/data_Cell2_25C.mat')
+        
         # Extract lookup table values - Discharging params
         self.lookup_table = rc_rs_values['lookupTable']
         self.SOC_table = self.lookup_table['SOC'][0][0].flatten()
@@ -418,15 +437,10 @@ class battery_channel:
 
         # Lookup R1, C1 based on charging/discharging
         if self.meas_curr_a_k_1 < 0:  # Charging
-            #R1 = interp1d(self.SOC_1_table, self.R1_1_table, kind='linear', fill_value='extrapolate')(self.x_hat_state[0])
             R1 = np.interp(self.x_hat_state[0],self.SOC_1_table, self.R1_1_table);
-            #C1 = interp1d(self.SOC_1_table, self.C1_1_table, kind='linear', fill_value='extrapolate')(self.x_hat_state[0])
             C1 = np.interp(self.x_hat_state[0],self.SOC_1_table, self.C1_1_table);
-            
         else:  # Discharging
-            #R1 = interp1d(self.SOC_table, self.R1_table, kind='linear', fill_value='extrapolate')(self.x_hat_state[0])
             R1 = np.interp(self.x_hat_state[0],self.SOC_table, self.R1_table);
-            #C1 = interp1d(self.SOC_table, self.C1_table, kind='linear', fill_value='extrapolate')(self.x_hat_state[0])
             C1 = np.interp(self.x_hat_state[0],self.SOC_table, self.C1_table);
             
         # State EKF - Prediction Step
@@ -440,21 +454,15 @@ class battery_channel:
 
         # State EKF - Measurement Update
         if meas_curr_a < 0:  # Charging
-            #Rs =interp1d(self.SOC_1_table, self.Rs_1_table, kind='linear', fill_value='extrapolate')(x_hat_state_pred[0])
             Rs = np.interp(x_hat_state_pred[0] ,self.SOC_1_table, self.Rs_1_table)
-            #OCV_pred = interp1d(self.SOC_OCV, self.OCV_charge, kind='linear', fill_value='extrapolate')(x_hat_state_pred[0])
             OCV_pred =np.interp(x_hat_state_pred[0],self.SOC_OCV, self.OCV_charge)
             dOCV_dSOC_k = self.dOCV_dSOC_1(x_hat_state_pred[0])
             V_pred_state = OCV_pred - x_hat_state_pred[1] - Rs * meas_curr_a
-            
         else:  # Discharging
-            #Rs = interp1d(self.SOC_table, self.Rs_table, kind='linear', fill_value='extrapolate')(x_hat_state_pred[0])
             Rs = np.interp(x_hat_state_pred[0] ,self.SOC_table, self.Rs_table)
-            #OCV_pred = interp1d(self.SOC_OCV, self.OCV_discharge, kind='linear', fill_value='extrapolate')(x_hat_state_pred[0])
             OCV_pred =np.interp(x_hat_state_pred[0],self.SOC_OCV, self.OCV_discharge)
             dOCV_dSOC_k = self.dOCV_dSOC(x_hat_state_pred[0])
             V_pred_state = OCV_pred - x_hat_state_pred[1] - Rs * meas_curr_a
-            
 
         C_state = np.array([dOCV_dSOC_k, -1])
         K_state_previous = self.K_state.copy()
@@ -472,7 +480,7 @@ class battery_channel:
 
         # Parameter EKF - Update
         self.update_counter += 1
-        if self.update_counter % 1000 == 0:
+        if self.update_counter > PARAMS.slow_loop_rate:
             P_param_pred = self.P_param + self.Q_param
             denom_param = C_param * P_param_pred * C_param + self.R_param
             if abs(denom_param) < 1e-10:
@@ -489,10 +497,21 @@ class battery_channel:
                 temp = (1/3.6)*self.x_hat_param
             self.ekf_cap_est_mah[1:]=self.ekf_cap_est_mah[:-1]
             self.ekf_cap_est_mah[0] = (1-PARAMS.ALPHA_EKF)*temp + PARAMS.ALPHA_EKF*(1/3.6)*self.x_hat_param
+            
+            self.beta_cap_est_as[1:]=self.beta_cap_est_as[:-1]
+            self.beta_cap_est_as[0] = self.x_hat_param
+            
             self.update_counter = 0
+        
+        #beta estimation and capacity forecast
+        self.update_counter_beta += 1
+        if self.update_counter_beta > PARAMS.beta_prediction_rate:
+            anchor_cap_mah = (1/3.6) * self.beta_cap_est_as[-1]
+            self.beta_curr = ((1/3.6)*self.x_hat_param - anchor_cap_mah) / PARAMS.beta_window
+            self.pred_beta_mah = anchor_cap_mah + self.beta_curr * PARAMS.forecast_horizon
+            self.update_counter_beta = 0
             
         self.x_hat_param_k_1 = self.x_hat_param    
-        # all of these should be logged to the json for backup
         # Update outputs (states)
         self.est_soc = self.x_hat_state[0]
         self.est_volt_v = OCV_pred - self.x_hat_state[1] - Rs * meas_curr_a
@@ -528,22 +547,18 @@ class battery_channel:
         #based on the history of capacity estimates, linearly interpolate predictions
         y = np.delete(self.ekf_cap_est_mah, np.where(self.ekf_cap_est_mah < 0))
         if y.size < 3:
-            self.pred_ekf_one = 0
-            self.pred_ekf_two = 0
+            self.pred_ekf_mah = 0
         else:
             x = np.linspace(0, y.size-1, y.size)
             p = np.polyfit(x, y, 1)
-            self.pred_ekf_one = np.polyval(p,  -600)
-            self.pred_ekf_two = np.polyval(p, -1200)
+            self.pred_ekf_mah = np.polyval(p,  -288)
         y = np.delete(self.cyc_cap_est_mah, np.where(self.cyc_cap_est_mah < 0))
         if y.size < 3:
-            self.pred_cyc_one = 0
-            self.pred_cyc_two = 0
+            self.pred_cyc_mah = 0
         else:
             x = np.linspace(0, y.size-1, y.size)
             p = np.polyfit(x, y, 1)
-            self.pred_cyc_one = np.polyval(p,  -180)
-            self.pred_cyc_two = np.polyval(p,  -360)
+            self.pred_cyc_mah = np.polyval(p,  -180)
     
     def backup(self):
         #save all the things to the json
@@ -575,7 +590,12 @@ class battery_channel:
             "est_cov_state01" : self.est_cov_state[0,1],
             "est_cov_state10" : self.est_cov_state[1,0],
             "est_cov_state11" : self.est_cov_state[1,1],
-            "est_cov_param" : self.est_cov_param, } #covariance for param EKF
+            "est_cov_param" : self.est_cov_param,  #covariance for param EKF
+            "update_counter" : self.update_counter,
+            "update_counter_beta" : self.update_counter_beta,
+            "pred_cyc_mah" : self.pred_cyc_mah,
+            "pred_ekf_mah" : self.pred_cyc_mah, 
+            "pred_beta_mah" : self.pred_beta_mah, }
 
         json_str = json.dumps(ch_vals) #convert to json str
     

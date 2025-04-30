@@ -8,6 +8,7 @@ class FSW_PARAMS:
         try:
             with open(file_name, 'r') as json_in:
                 vals = json.loads(json_in.read())
+                self.DT_COMM_S    = vals["DT_COMM_S"]              # time step between checking comm port
                 self.DT_CHECK_S   = vals["DT_CHECK_S"]             # time step between important checks
                 self.DT_SENSORS_S = vals["DT_SENSORS_S"]           # time step between reading sensors
                 self.DT_LOG_S     = vals["DT_LOG_S"]               # time step between logs
@@ -55,6 +56,9 @@ class FSW_PARAMS:
                 self.num_boots = vals["num_boots"]
                 self.ALPHA_EKF = vals["ALPHA_EKF"]
                 self.ALPHA_CYC = vals["ALPHA_CYC"]
+                self.NUM_EKF_CAP  = vals["NUM_EKF_CAP"]
+                self.NUM_CYC_CAP  = vals["NUM_CYC_CAP"]
+                self.NUM_BETA_CAP = vals["NUM_BETA_CAP"]
                 
                 self.R_state = vals["R_state"] #0.015                     # Measurement noise covariance
                 Q1 = vals["Q_state1"]
@@ -62,8 +66,13 @@ class FSW_PARAMS:
                 self.Q_state = np.diag([Q1, Q2])     # Process noise covariance
                 self.Q_param = vals["Q_param"] #1e-1                      # Parameter process noise
                 self.R_param = vals["R_param"] #3.72725e-3                # Parameter measurement noise
+                self.slow_loop_rate = vals["slow_loop_rate"]
+                self.beta_window = vals["beta_window"]
+                self.beta_prediction_rate = vals["beta_prediction_rate"]
+                self.forecast_horizon = vals["forecast_horizon"]
         except Exception:
             print("Issue reading parameters")
+            self.DT_COMM_S = 0.02           # time between comm checks
             self.DT_CHECK_S = 0.2          # time step between important checks
             self.DT_SENSORS_S = 0.1         # time step between reading sensors
             self.DT_LOG_S  = 1.0            # time step between logs
@@ -111,11 +120,18 @@ class FSW_PARAMS:
             self.num_boots = 0
             self.ALPHA_EKF = 0.04
             self.ALPHA_CYC = 0.01
+            self.NUM_EKF_CAP = 600
+            self.NUM_CYC_CAP = 360
+            self.NUM_BETA_CAP = 50
             
             self.R_state = 0.015                     # Measurement noise covariance
             self.Q_state = np.diag([1e-6, 1e-3])     # Process noise covariance
             self.Q_param = 1e-1                      # Parameter process noise
             self.R_param = 3.72725e-3                # Parameter measurement noise
+            self.slow_loop_rate = 2100
+            self.beta_window = 2e5
+            self.beta_prediction_rate = 3600
+            self.forecast_horizon = 6e5
         
     def update_parameter(self, file_name, variable, value):
         #If we need to update the params in flight, this should write to the json file
@@ -184,12 +200,16 @@ class FSW_PARAMS:
                 "num_boots",               # 41
                 "ALPHA_EKF",               # 42
                 "ALPHA_CYC",               # 43
+                "NUM_EKF_CAP",             # 46
+                "NUM_CYC_CAP",             # 45
                 
-                "R_state",                 # 44
-                "Q_state1",                # 45
-                "Q_state2",                # 46
-                "Q_param",                 # 47
-                "R_param"]                 # 48
+                "R_state",                 # 46
+                "Q_state1",                # 47
+                "Q_state2",                # 48
+                "Q_param",                 # 49
+                "R_param",                 # 50
+                "beta_window",             # 51
+                "forecast_horizon"]        # 52
         if index >= len(name_list) or index < 0:
             return None
         else:
@@ -197,7 +217,7 @@ class FSW_PARAMS:
     
     def fetch_parameter_index(self, param_name):
         # this will use the "fetch parameter name" fxn so we only need to maintain one list
-        # it seems hacky, but will actually reduce chance we mess something
+        # it seems hacky, but will actually reduce chance we mess up something
         for i in range(99):
             if param_name == fetch_parameter_name(i):
                 return i
