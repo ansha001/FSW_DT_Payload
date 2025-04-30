@@ -6,7 +6,9 @@ import json
 import numpy as np
 from FSW_PARAMS_class import FSW_PARAMS
 
+
 HEADER = b'\x30\x20\x30\x20\x30\x20\x30\x20'
+HEADER = b'\xAD\xAD\xAD\xAD\xAD\xAD\xAD\xAD'
 
 MAX_FILE_INDEX = 10**6
 
@@ -16,7 +18,6 @@ CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
 BUFFER_BACKUP_FILE = os.path.join(LOG_BASE_DIR, 'buffers_backup.json')
 params_file = os.path.join(BASE_DIR, 'PARAMS_LIST.json')
 PARAMS = FSW_PARAMS(params_file)
-
 
 with open(CONFIG_FILE, 'r') as f:
     CONFIG = json.load(f)
@@ -125,17 +126,17 @@ def build_packet_group_3(reading_list):
         (
             time_s, 
             soc0, volt0, cov00_0, cov11_0, cap0, param0, cap_cyc0, cap_rpt0,
-            pr_ekf_one0, pr_ekf_two0, pr_cyc_one0, pr_cyc_two0,
+            pr_cyc0, pr_ekf0, pr_beta0, 
             soc1, volt1, cov00_1, cov11_1, cap1, param1, cap_cyc1, cap_rpt1,
-            pr_ekf_one1, pr_ekf_two1, pr_cyc_one1, pr_cyc_two1,
+            pr_cyc1, pr_ekf1, pr_beta1,
             soc2, volt2, cov00_2, cov11_2, cap2, param2, cap_cyc2, cap_rpt2,
-            pr_ekf_one2, pr_ekf_two2, pr_cyc_one2, pr_cyc_two2,
+            pr_cyc2, pr_ekf2, pr_beta2, 
         ) = reading
 
         timestamp_bytes = np.array([time_s], dtype=np.float16).tobytes()
-        estimator_data = struct.pack('<36f', soc0, volt0, cov00_0, cov11_0, cap0, param0, cap_cyc0, cap_rpt0, pr_ekf_one0, pr_ekf_two0, pr_cyc_one0, pr_cyc_two0,
-                                     soc1, volt1, cov00_1, cov11_1, cap1, param1, cap_cyc1, cap_rpt1, pr_ekf_one1, pr_ekf_two1, pr_cyc_one1, pr_cyc_two1,
-                                     soc2, volt2, cov00_2, cov11_2, cap2, param2, cap_cyc2, cap_rpt2, pr_ekf_one2, pr_ekf_two2, pr_cyc_one2, pr_cyc_two2)
+        estimator_data = struct.pack('<33f', soc0, volt0, cov00_0, cov11_0, cap0, param0, cap_cyc0, cap_rpt0, pr_cyc0, pr_ekf0, pr_beta0,
+                                     soc1, volt1, cov00_1, cov11_1, cap1, param1, cap_cyc1, cap_rpt1, pr_cyc1, pr_ekf1, pr_beta1,
+                                     soc2, volt2, cov00_2, cov11_2, cap2, param2, cap_cyc2, cap_rpt2, pr_cyc2, pr_ekf2, pr_beta2)
         payload += timestamp_bytes + estimator_data
     return payload
 
@@ -157,6 +158,7 @@ def buffer_and_log_reading(group_id: int, reading: tuple):
         reading_buffers[group_id].clear()
 
 def parse_request_packet(packet: bytes):
+    print(packet)
     if len(packet) < 17 or packet[:8] != HEADER:
         raise ValueError("Invalid or incomplete packet")
     msg_type = struct.unpack('<B', packet[12:13])[0]
