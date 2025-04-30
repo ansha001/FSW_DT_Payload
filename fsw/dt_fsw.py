@@ -24,7 +24,7 @@ from packet_handler import (
 # Init serial port to communicate with the mock bus
 HEADER = b'\x30\x20\x30\x20\x30\x20\x30\x20'
 try:
-    bus_serial = serial.Serial('/dev/serial0', 115200, timeout=0.015)
+    bus_serial = serial.Serial('/dev/serial0', 115200, timeout=0.5)
     bus_serial.flushInput()
     bus_serial.flushOutput()
     #bus_serial.reset_input_buffer()
@@ -315,6 +315,58 @@ def backup_cap_files(ch0, ch1, ch2):
     np.save(cyc_cap_file, cyc_cap_est_mah)
     np.save(beta_cap_file, beta_cap_est_as)
 
+def handle_buffer(buffer, waiting_bytes):
+    if buffer is None:
+        buffer = bus_serial.read(waiting_bytes)
+    else:
+        buffer = buffer + bus_serial.read(waiting_bytes)
+    while len(buffer) >= 17:
+        if buffer[0:8] != HEADER:
+            buffer = buffer[1:]
+        else:
+            #valid header
+            size = struct.unpack('<I', buffer[8:12])[0]
+            #handle corrupt size
+            if size < PARAMS.MIN_MSG_SIZE or size > PARAMS.MAX_MSG_SIZE:
+                print('bad msg size')
+                print(buffer)
+                buffer = buffer[1:]
+                continue
+            if len(buffer) < size+8:
+                #incomplete message
+                return buffer
+            else:
+                #complete message
+                full_packet = buffer[0:size+8]
+                buffer = buffer[size+8:]
+                response = handle_request_packet(full_packet)
+                if response == -1:
+                    safe_board()
+                    ch0.backup()
+                    ch1.backup()
+                    ch2.backup()
+                    backup_cap_files(ch0, ch1, ch2)
+                    os.system('sudo shutdown -h now')
+                    time.sleep(10)
+                    sys.exit(0)
+                elif response == -2:
+                    safe_board()
+                    ch0.backup()
+                    ch1.backup()
+                    ch2.backup()
+                    backup_cap_files(ch0, ch1, ch2)
+                    os.system('sudo reboot -h now')
+                    time.sleep(10)
+                    sys.exit(0)
+                elif response:
+                    bus_serial.write(response)
+                    bus_serial.flush()
+                    print(f"[BUS] Sent response of length {len(response)} bytes.")
+                    print(response)
+                else:
+                    print("[BUS] No response generated.")
+    return buffer
+
 def safe_board(cell = -1):
     if cell == -1:
         #set everything to safe settings
@@ -406,6 +458,7 @@ if __name__ == "__main__":
         #init size and queue
         size = 0
         queue = None
+        buffer = None
         while True:
             time_iter_s = time.monotonic()
 
@@ -415,55 +468,64 @@ if __name__ == "__main__":
                 time_prev_check_s = time_iter_s
 
             # Handle incoming data request from bus
-            if bus_serial and time_iter_s > time_prev_comm_s + PARAMS.DT_COMM_S and bus_serial.in_waiting >= 17:
+            if bus_serial and time_iter_s > time_prev_comm_s + PARAMS.DT_COMM_S and bus_serial.in_waiting > 0:
                 time_prev_comms_s = time_iter_s
                 
                 if bus_serial.in_waiting > 100:
                     print("overloaded buffer")
                     print(bus_serial.in_waiting)
                 
-                header = bus_serial.read_until(expected=HEADER, size=50)
-                if header[-8:] == HEADER:
-                    print("valid header")
-                    waiting_bytes = bus_serial.in_waiting
-                    
-                    if waiting_bytes <= 4:
-                        print("incomplete packet rx'd")
-                    else:
-                        size_B = bus_serial.read(4)
-                        size = struct.unpack('<I', size_B)[0]
-                        if waiting_bytes < size or size > 999:
-                            print("incomplete packet rx''d")
-                            print(size)
-                            print(waiting_bytes)
-                        else:
-                            rest = bus_serial.read(size-4)
-                            full_packet = header[-8:] + size_B + rest
-                            response = handle_request_packet(full_packet)
-                            if response == -1:
-                                safe_board()
-                                ch0.backup()
-                                ch1.backup()
-                                ch2.backup()
-                                backup_cap_files(ch0, ch1, ch2)
-                                os.system('sudo shutdown -h now')
-                                time.sleep(10)
-                                sys.exit(0)
-                            elif response == -2:
-                                safe_board()
-                                ch0.backup()
-                                ch1.backup()
-                                ch2.backup()
-                                backup_cap_files(ch0, ch1, ch2)
-                                os.system('sudo reboot -h now')
-                                time.sleep(10)
-                                sys.exit(0)
-                            elif response:
-                                bus_serial.write(response)
-                                bus_serial.flush()
-                                print(f"[BUS] Sent response of length {len(response)} bytes.")
-                            else:
-                                print("[BUS] No response generated.")
+                buffer = handle_buffer(buffer, bus_serial.in_waiting)
+                
+#                 header = bus_serial.read_until(expected=HEADER)
+#                 if header[-8:] != HEADER:
+#                     print("invalid header")
+#                     print(header)
+#                     header = None
+#                     #bus_serial.reset_input_buffer()
+#                     flush = bus_serial.read(bus_serial.in_waiting)
+#                 else:
+#                     print("valid header")
+#                     waiting_bytes = bus_serial.in_waiting
+#                     
+#                     if waiting_bytes <= 4:
+#                         print("incomplete packet rx'd")
+#                     else:
+#                         size_B = bus_serial.read(4)
+#                         size = struct.unpack('<I', size_B)[0]
+#                         if waiting_bytes < size or size > 999:
+#                             print("incomplete packet rx''d")
+#                             print(size)
+#                             print(waiting_bytes)
+#                         else:
+#                             rest = bus_serial.read(size-4)
+#                             full_packet = header[-8:] + size_B + rest
+#                             response = handle_request_packet(full_packet)
+#                             if response == -1:
+#                                 safe_board()
+#                                 ch0.backup()
+#                                 ch1.backup()
+#                                 ch2.backup()
+#                                 backup_cap_files(ch0, ch1, ch2)
+#                                 os.system('sudo shutdown -h now')
+#                                 time.sleep(10)
+#                                 sys.exit(0)
+#                             elif response == -2:
+#                                 safe_board()
+#                                 ch0.backup()
+#                                 ch1.backup()
+#                                 ch2.backup()
+#                                 backup_cap_files(ch0, ch1, ch2)
+#                                 os.system('sudo reboot -h now')
+#                                 time.sleep(10)
+#                                 sys.exit(0)
+#                             elif response:
+#                                 bus_serial.write(response)
+#                                 bus_serial.flush()
+#                                 print(f"[BUS] Sent response of length {len(response)} bytes.")
+#                                 print(response)
+#                             else:
+#                                 print("[BUS] No response generated.")
                     
 #                     waiting_bytes = bus_serial.in_waiting
 #                     if (queue is None and waiting_bytes>=17) or (queue is not None and waiting_bytes>=size-4):
@@ -559,12 +621,12 @@ if __name__ == "__main__":
                 #chg_val_prev = ch2.chg_val
                 
                 #push those actuator values to the board
-#                 if ch0.update_act:
-#                     update_actuators(ch0)
-#                 if ch1.update_act:
-#                     update_actuators(ch1)
-#                 if ch2.update_act:
-#                     update_actuators(ch2)
+                if ch0.update_act:
+                    update_actuators(ch0)
+                if ch1.update_act:
+                    update_actuators(ch1)
+                if ch2.update_act:
+                    update_actuators(ch2)
             
             pulse = ch0.pulse_state or ch1.pulse_state or ch2.pulse_state
             if (time_iter_s > time_prev_log_s + PARAMS.DT_LOG_S) or (pulse and time_iter_s > time_prev_log_s + PARAMS.DT_SENSORS_S):
@@ -581,15 +643,17 @@ if __name__ == "__main__":
                 save_buffer_backup()
                 
                 #print('Tempera: %5.2f, %5.2f, %5.2f' % (temp_iter_c[0], temp_iter_c[1], temp_iter_c[2]))
-#                 print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
-#                 print('Current: %5.2f, %5.2f, %5.2f' % (curr_iter_ma[0], curr_iter_ma[1], curr_iter_ma[2]))
-#                 #print('dis_val: %5.2f, %5.2f, %5.2f' % (ch0.dis_val, ch1.dis_val, ch2.dis_val))
-#                 #print('dis_low: %5.2f, %5.2f, %5.2f' % (ch0.dis_low_val, ch1.dis_low_val, ch2.dis_low_val))
-#                 #print('chg_val: %5.2f, %5.2f, %5.2f' % (ch0.chg_val, ch1.chg_val, ch2.chg_val))
-#                 #print('chg_low: %5.2f, %5.2f, %5.2f' % (ch0.chg_low_val, ch1.chg_low_val, ch2.chg_low_val))
+                #print('Voltage: %5.2f, %5.2f, %5.2f' % (volt_iter_v[0], volt_iter_v[1], volt_iter_v[2]))
+                #print('Current: %5.2f, %5.2f, %5.2f' % (curr_iter_ma[0], curr_iter_ma[1], curr_iter_ma[2]))
+                #print('dis_val: %5.2f, %5.2f, %5.2f' % (ch0.dis_val, ch1.dis_val, ch2.dis_val))
+                #print('dis_low: %5.2f, %5.2f, %5.2f' % (ch0.dis_low_val, ch1.dis_low_val, ch2.dis_low_val))
+                #print('chg_val: %5.2f, %5.2f, %5.2f' % (ch0.chg_val, ch1.chg_val, ch2.chg_val))
+                #print('chg_low: %5.2f, %5.2f, %5.2f' % (ch0.chg_low_val, ch1.chg_low_val, ch2.chg_low_val))
 #                 print('ch_stat:'+ch0.state+','+ch1.state+','+ch2.state)
 #                 print('ch_mode:'+ch0.mode+','+ch1.mode+','+ch2.mode)
 #                 print('Test_sq: %3.1f, %3.1f, %3.1f' % (ch0.test_sequence, ch1.test_sequence, ch2.test_sequence))
+#                 print('tot_cyc: %3.1f, %3.1f, %3.1f' % (ch0.total_cycles, ch1.total_cycles, ch2.total_cycles))
+#                 print('tot_rpt: %3.1f, %3.1f, %3.1f' % (ch0.total_rpts, ch1.total_rpts, ch2.total_rpts))
 #                 #print('SOC_est: %5.2f, %5.2f, %5.2f' % (ch0.est_soc, ch1.est_soc, ch2.est_soc))
 #                 #print('CAP est: %5.2f, %5.2f, %5.2f' % (ch0.est_capacity_as, ch1.est_capacity_as, ch2.est_capacity_as))
 #                 #print('heater?: '+str(heater_on))
