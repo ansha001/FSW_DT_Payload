@@ -4,7 +4,7 @@ import json
 import csv
 from collections import defaultdict
 
-HEADER = b'\x30\x20\x30\x20\x30\x20\x30\x20'
+HEADER = b'\x89\x89\x89\x89\x89\x89\x89\x89'
 
 STATE_NAMES = {
     0: 'CHG',
@@ -35,13 +35,13 @@ BUFFER_ENTRIES = {
 }
 
 def parse_group_1_packet(payload: bytes):
-    entry_size = 20  # 10 float16 values = 20 bytes
+    entry_size = 22  # 1 float 32 and 9 float16 values = 22 bytes
     total_entries = len(payload) // entry_size
     parsed_entries = []
 
     for i in range(total_entries):
         entry = payload[i*entry_size:(i+1)*entry_size]
-        values = struct.unpack('<10e', entry)
+        values = struct.unpack('<1f 9e', entry)
         parsed_entries.append({
             "time": values[0],
             "voltages": values[1:4],
@@ -52,14 +52,14 @@ def parse_group_1_packet(payload: bytes):
     return parsed_entries
 
 def parse_group_2_packet(payload: bytes):
-    entry_size = struct.calcsize('<4e 3B H 3H 3B 3B 3B')  # 4 float16s + ints
+    entry_size = struct.calcsize('<1f 3e 3B H 3H 3B 3B 3B')  # 1 float32, 3 float16s + ints
     parsed_entries = []
     total_entries = len(payload) // entry_size
 
     for i in range(total_entries):
         entry = payload[i * entry_size:(i + 1) * entry_size]
 
-        time_s, cpu_temp, cpu_volt, cpu_freq = struct.unpack('<4e', entry[:8])
+        time_s, cpu_temp, cpu_volt, cpu_freq = struct.unpack('<1f 3e', entry[:8])
         unpacked = struct.unpack('<3B H 3H 3B 3B 3B', entry[8:])
 
         cycle_counts = unpacked[0:3]
@@ -85,17 +85,17 @@ def parse_group_2_packet(payload: bytes):
     return parsed_entries
 
 def parse_group_3_packet(payload: bytes):
-    entry_size = 2 + struct.calcsize('<36f')  # timestamp + 36 float32s
+    entry_size = 4 + struct.calcsize('<33f')  # timestamp + 33 float32s
     total_entries = len(payload) // entry_size
     parsed_entries = []
 
     for i in range(total_entries):
         entry = payload[i*entry_size:(i+1)*entry_size]
-        time_s = struct.unpack('<e', entry[:2])[0]
-        estimator_data = struct.unpack('<36f', entry[2:])
+        time_s = struct.unpack('<f', entry[:4])[0]
+        estimator_data = struct.unpack('<36f', entry[4:])
         channels = []
         for j in range(3):
-            offset = j * 12
+            offset = j * 11
             channels.append({
                 "estimated_soc": estimator_data[offset + 0],
                 "estimated_voltage": estimator_data[offset + 1],
@@ -105,10 +105,9 @@ def parse_group_3_packet(payload: bytes):
                 "cov_param": estimator_data[offset + 5],
                 "cap_cyc": estimator_data[offset+6],
                 "cap_rpt": estimator_data[offset+7],
-                "pred_ekf_one": estimator_data[offset + 8],
-                "pred_ekf_two": estimator_data[offset + 9],
-                "pred_cyc_one": estimator_data[offset + 10],
-                "pred_cyc_two": estimator_data[offset + 11],
+                "pred_cyc": estimator_data[offset + 8],
+                "pred_ekf": estimator_data[offset + 9],
+                "pred_beta": estimator_data[offset + 10],
             })
         parsed_entries.append({"time": time_s, "channels": channels})
 
@@ -179,13 +178,14 @@ def write_csv(group_id, entries, output_folder='parsed_csv'):
                     'test_seq0', 'test_seq1', 'test_seq2',
                     'state0', 'state1', 'state2',
                     'mode0', 'mode1', 'mode2',
-                    'cpu_temp', 'cpu_volt'
+                    'cpu_temp', 'cpu_volt', 'cpu_freq'
                 ])
             elif group_id == 3:
                 writer.writerow(['time'] + [
                     f"ch{ch}_{field}"
                     for ch in range(3)
-                    for field in ['soc', 'volt', 'cov00', 'cov11', 'cap', 'covp']
+                    for field in ['est_soc','volt','cov00','cov11','est_cap','covp','cap_cyc','cap_rpt',
+                                  'pred_cyc','pred_ekf','pred_beta']
                 ])
 
         # Write the actual data
@@ -207,7 +207,8 @@ def write_csv(group_id, entries, output_folder='parsed_csv'):
                     *entry['states'],
                     *entry['modes'],
                     entry['cpu_temp'],
-                    entry['cpu_volt']
+                    entry['cpu_volt'],
+                    entry['cpu freq']
                 ])
             elif group_id == 3:
                 flat = []
@@ -215,10 +216,11 @@ def write_csv(group_id, entries, output_folder='parsed_csv'):
                     flat.extend([
                         ch["estimated_soc"], ch["estimated_voltage"],
                         ch["cov_state_00"], ch["cov_state_11"],
-                        ch["capacity"], ch["cov_param"]
+                        ch["estimated_capacity"], ch["cov_param"],
+                        ch["cycle_cap"], ch["rpt_cap"], ch["pred_cyc"],
+                        ch["pred_ekf"], ch["pred_beta"]
                     ])
                 writer.writerow([entry["time"]] + flat)
-
 
 def parse_folder(folder_path):
     for fname in sorted(os.listdir(folder_path)):
