@@ -58,7 +58,7 @@ def compute_crc32(data: bytes) -> int:
 
 # Build response packet in the format - [HEADER][SIZE][TYPE][PAYLOAD][CRC32]
 def build_response_packet(msg_type: int, payload: bytes) -> bytes:
-    size = len(payload) + 1 + 4
+    size = len(payload) + 1 + 4 + 4 #type, size, CRC
     size_bytes = struct.pack('<I', size)
     type_byte = struct.pack('<B', msg_type)
     packet_wo_crc = size_bytes + type_byte + payload
@@ -158,7 +158,9 @@ def buffer_and_log_reading(group_id: int, reading: tuple):
 
 def parse_request_packet(packet: bytes):
     if len(packet) < 17 or packet[:8] != HEADER:
+        print(packet)
         raise ValueError("Invalid or incomplete packet")
+
     msg_type = struct.unpack('<B', packet[12:13])[0]
     payload = packet[13:-4]
     recv_crc = struct.unpack('<I', packet[-4:])[0]

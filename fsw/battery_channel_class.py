@@ -121,10 +121,10 @@ class battery_channel:
         self.dx_by_dtheta_k_1 = np.zeros(2)
 
         # lookup tables as class attributes
-        rc_rs_values = loadmat(r'mat_files/RC_Rs_values_1.mat') 
-        rc_rs_values_charging = loadmat(r'mat_files/RC_Rs_values_1_charging.mat')
-        ocv_data = loadmat(r'mat_files/LIR2032_EEMB_Cell1_25C_OCV.mat')
-        data_cell2 = loadmat(r'mat_files/data_Cell2_25C.mat')
+        rc_rs_values = loadmat(r'/home/dt/fsw/mat_files/RC_Rs_values_1.mat') 
+        rc_rs_values_charging = loadmat(r'/home/dt/fsw/mat_files/RC_Rs_values_1_charging.mat')
+        ocv_data = loadmat(r'/home/dt/fsw/mat_files/LIR2032_EEMB_Cell1_25C_OCV.mat')
+        data_cell2 = loadmat(r'/home/dt/fsw/mat_files/data_Cell2_25C.mat')
 
         # Extract lookup table values - Discharging params
         self.lookup_table = rc_rs_values['lookupTable']
