@@ -6,10 +6,6 @@ import json
 import numpy as np
 from FSW_PARAMS_class import FSW_PARAMS
 
-
-HEADER = b'\x30\x20\x30\x20\x30\x20\x30\x20'
-HEADER = b'\xAD\xAD\xAD\xAD\xAD\xAD\xAD\xAD'
-
 MAX_FILE_INDEX = 10**6
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -18,6 +14,8 @@ CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
 BUFFER_BACKUP_FILE = os.path.join(LOG_BASE_DIR, 'buffers_backup.json')
 params_file = os.path.join(BASE_DIR, 'PARAMS_LIST.json')
 PARAMS = FSW_PARAMS(params_file)
+
+HEADER = b'\x89\x89\x89\x89\x89\x89\x89\x89'
 
 with open(CONFIG_FILE, 'r') as f:
     CONFIG = json.load(f)
@@ -59,7 +57,7 @@ def compute_crc32(data: bytes) -> int:
 
 # Build response packet in the format - [HEADER][SIZE][TYPE][PAYLOAD][CRC32]
 def build_response_packet(msg_type: int, payload: bytes) -> bytes:
-    size = len(payload) + 1 + 4
+    size = len(payload) + 1 + 4 + 4 #type, size, CRC
     size_bytes = struct.pack('<I', size)
     type_byte = struct.pack('<B', msg_type)
     packet_wo_crc = size_bytes + type_byte + payload
@@ -95,10 +93,19 @@ def log_binary_packet(group_id: int, payload: bytes):
 def build_packet_group_1(reading_list):
     payload = b''
     for reading in reading_list:
-        # (time_s, volt0, volt1, volt2, curr0, curr1, curr2, temp0, temp1, temp2) = reading
-        # arr = np.array([time_s, volt0, volt1, volt2, curr0, curr1, curr2, temp0, temp1, temp2], dtype=np.float16)
-        arr = np.array(reading, dtype=np.float16)
-        payload += arr.tobytes()
+        (time, v0, v1, v2, c0, c1, c2, t0, t1, t2) = reading
+        float32_part = np.array([time], dtype=np.float32).tobytes()
+        float_part = np.array([v0, v1, v2, c0, c1, c2, t0, t1, t2], dtype=np.float16).tobytes()
+        payload += float32_part + float_part
+        values = struct.unpack('<1f 9e', payload[-22:]) #this looks right!
+        
+#     arr = np.array(reading_list[0], dtype=np.float32)
+#     payload += arr.tobytes()
+#     for reading in reading_list[1:]:
+#         # (time_s, volt0, volt1, volt2, curr0, curr1, curr2, temp0, temp1, temp2) = reading
+#          arr = np.array([time_s, volt0, volt1, volt2, curr0, curr1, curr2, temp0, temp1, temp2], dtype=np.float16)
+#         arr = np.array(reading, dtype=np.float16)
+#         payload += arr.tobytes()
     return payload
 
 def build_packet_group_2(reading_list):
@@ -116,8 +123,9 @@ def build_packet_group_2(reading_list):
         ) = reading
 
         int_part = struct.pack('<3B H 3H 3B 3B 3B', cyc0, cyc1, cyc2, resets, tms0, tms1, tms2, seq0, seq1, seq2, state0, state1, state2, mode0, mode1, mode2)
-        float_part = np.array([time_s, cpu_temp, cpu_volt, cpu_freq], dtype=np.float16).tobytes()
-        payload += float_part + int_part
+        float32_part = np.array([time_s], dtype=np.float32).tobytes()
+        float_part = np.array([cpu_temp, cpu_volt, cpu_freq], dtype=np.float16).tobytes()
+        payload += float32_part + float_part + int_part
     return payload
 
 def build_packet_group_3(reading_list):
@@ -126,15 +134,15 @@ def build_packet_group_3(reading_list):
         (
             time_s, 
             soc0, volt0, cov00_0, cov11_0, cap0, param0, cap_cyc0, cap_rpt0,
-            pr_cyc0, pr_ekf0, pr_beta0, 
+            pr_cyc0, pr_ekf0, pr_beta0,
             soc1, volt1, cov00_1, cov11_1, cap1, param1, cap_cyc1, cap_rpt1,
             pr_cyc1, pr_ekf1, pr_beta1,
             soc2, volt2, cov00_2, cov11_2, cap2, param2, cap_cyc2, cap_rpt2,
-            pr_cyc2, pr_ekf2, pr_beta2, 
+            pr_cyc2, pr_ekf2, pr_beta2,
         ) = reading
 
-        timestamp_bytes = np.array([time_s], dtype=np.float16).tobytes()
-        estimator_data = struct.pack('<33f', soc0, volt0, cov00_0, cov11_0, cap0, param0, cap_cyc0, cap_rpt0, pr_cyc0, pr_ekf0, pr_beta0,
+        timestamp_bytes = np.array([time_s], dtype=np.float32).tobytes()
+        estimator_data = struct.pack('<33f', soc0, volt0, cov00_0, cov11_0, cap0, param0, cap_cyc0, cap_rpt0, pr_cyc0, pr_ekf0, pr_beta0, 
                                      soc1, volt1, cov00_1, cov11_1, cap1, param1, cap_cyc1, cap_rpt1, pr_cyc1, pr_ekf1, pr_beta1,
                                      soc2, volt2, cov00_2, cov11_2, cap2, param2, cap_cyc2, cap_rpt2, pr_cyc2, pr_ekf2, pr_beta2)
         payload += timestamp_bytes + estimator_data
@@ -158,9 +166,10 @@ def buffer_and_log_reading(group_id: int, reading: tuple):
         reading_buffers[group_id].clear()
 
 def parse_request_packet(packet: bytes):
-    print(packet)
     if len(packet) < 17 or packet[:8] != HEADER:
+        print(packet)
         raise ValueError("Invalid or incomplete packet")
+
     msg_type = struct.unpack('<B', packet[12:13])[0]
     payload = packet[13:-4]
     recv_crc = struct.unpack('<I', packet[-4:])[0]
@@ -290,7 +299,7 @@ def handle_request_packet(packet: bytes) -> bytes:
             return None
 
     else: #should be message type 1
-        print("Next packet request received.")
+        #print("Next packet request received.")
         return get_next_packet_to_send()
 
 def parse_specific_request_argument(payload: bytes):

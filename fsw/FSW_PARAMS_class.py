@@ -8,7 +8,6 @@ class FSW_PARAMS:
         try:
             with open(file_name, 'r') as json_in:
                 vals = json.loads(json_in.read())
-                self.DT_COMM_S    = vals["DT_COMM_S"]              # time step between checking comm port
                 self.DT_CHECK_S   = vals["DT_CHECK_S"]             # time step between important checks
                 self.DT_SENSORS_S = vals["DT_SENSORS_S"]           # time step between reading sensors
                 self.DT_LOG_S     = vals["DT_LOG_S"]               # time step between logs
@@ -18,8 +17,6 @@ class FSW_PARAMS:
                 self.DT_FAST_S    = vals["DT_FAST_S"]              # time step between fast loop of EKF
                 self.DT_SLOW_S    = vals["DT_SLOW_S"]              # time step between slow loop of EKF
                 self.DT_BACKUP_S  = vals["DT_BACKUP_S"]            # time step between backups
-                self.MIN_MSG_SIZE = vals["MIN_MSG_SIZE"]
-                self.MAX_MSG_SIZE = vals["MAX_MGS_SIZE"]
                 self.CHG_LIMIT_V = vals["CHG_LIMIT_V"]             # voltage to stop charging
                 self.DIS_LIMIT_V = vals["DIS_LIMIT_V"]             # voltage to stop discharging
                 self.FB_PULSE1_V = vals["FB_PULSE1_V"]             # fallback voltage for 65% SOC
@@ -74,7 +71,6 @@ class FSW_PARAMS:
                 self.forecast_horizon = vals["forecast_horizon"]
         except Exception:
             print("Issue reading parameters")
-            self.DT_COMM_S = 0.02           # time between comm checks
             self.DT_CHECK_S = 0.2          # time step between important checks
             self.DT_SENSORS_S = 0.1         # time step between reading sensors
             self.DT_LOG_S  = 1.0            # time step between logs
@@ -84,8 +80,6 @@ class FSW_PARAMS:
             self.DT_FAST_S = 1              # time step between fast loop of EKF
             self.DT_SLOW_S = 1000           # time step between slow loop of EKF
             self.DT_BACKUP_S = 60
-            self.MIN_MSG_SIZE = 8
-            self.MAX_MSG_SIZE = 13
             self.CHG_LIMIT_V = 4.20         # voltage to stop charging
             self.DIS_LIMIT_V = 2.75         # voltage to stop discharging
             self.FB_PULSE1_V = 3.10         # fallback voltage for 65% SOC
@@ -126,14 +120,13 @@ class FSW_PARAMS:
             self.ALPHA_CYC = 0.01
             self.NUM_EKF_CAP = 600
             self.NUM_CYC_CAP = 360
-            self.NUM_BETA_CAP = 50
+            self.NUM_BETA_CAP = 75
             
             self.R_state = 0.015                     # Measurement noise covariance
             self.Q_state = np.diag([1e-6, 1e-3])     # Process noise covariance
             self.Q_param = 1e-1                      # Parameter process noise
             self.R_param = 3.72725e-3                # Parameter measurement noise
-            self.slow_loop_rate = 2100
-            self.beta_window = 2e5
+            self.beta_window = 3e5
             self.beta_prediction_rate = 3600
             self.forecast_horizon = 6e5
         
@@ -166,56 +159,55 @@ class FSW_PARAMS:
                 "DT_FAST_S",               #  6
                 "DT_SLOW_S",               #  7
                 "DT_BACKUP_S",             #  8
-                "MIN_MSG_SIZE",            #  9
-                "MAX_MGS_SIZE",            # 10
-                "CHG_LIMIT_V",             # 11
-                "DIS_LIMIT_V",             # 12
-                "FB_PULSE1_V",             # 13
-                "FB_PULSE2_V",             # 14
-                "SOC_PULSE1",              # 15
-                "SOC_PULSE2",              # 16
-                "TIME_CYCLE_REST_S",       # 17
-                "TIME_PULSE_REST_S",       # 18
-                "TIME_PULSE_TEST_S",       # 19
-                "TIME_TEST_REST_S",        # 20
-                "TEMP_MAX_C",              # 21
-                "TEMP_MIN_C",              # 22
-                "TEMP_HEATER_ON_C",        # 23
-                "TEMP_HEATER_OFF_C",       # 24
-                "TEMP_CHG_MAX_C",          # 25
-                "TEMP_CHG_UPPER_C",        # 26
-                "TEMP_CHG_LOWER_C",        # 27
-                "TEMP_CHG_MIN_C",          # 28
-            
-                "CHG_UPPER_SETPT_MA",      # 29
-                "CHG_LOWER_SETPT_MA",      # 30
-                "CHG_MIN_SETPT_MA",        # 31
+                "CHG_LIMIT_V",             #  9
+                "DIS_LIMIT_V",             # 10
+                "FB_PULSE1_V",             # 11
+                "FB_PULSE2_V",             # 12
+                "SOC_PULSE1",              # 13
+                "SOC_PULSE2",              # 14
+                "TIME_CYCLE_REST_S",       # 15
+                "TIME_PULSE_REST_S",       # 16
+                "TIME_PULSE_TEST_S",       # 17
+                "TIME_TEST_REST_S",        # 18
+                "TEMP_MAX_C",              # 19
+                "TEMP_MIN_C",              # 20
+                "TEMP_HEATER_ON_C",        # 21
+                "TEMP_HEATER_OFF_C",       # 22
+                "TEMP_CHG_MAX_C",          # 23
+                "TEMP_CHG_UPPER_C",        # 24
+                "TEMP_CHG_LOWER_C",        # 25
+                "TEMP_CHG_MIN_C",          # 26
                 
-                "CHG_SETPT_DELTA_MA",      # 32
-                "CHG_LOW_SETPT_MA",        # 33
-                "CHG_LOW_SETPT_DELTA_MA",  # 34
-                "DIS_SETPT_MA",            # 35
-                "DIS_SETPT_DELTA_MA",      # 36
-                "DIS_LOW_SETPT_MA",        # 37
-                "DIS_LOW_SETPT_DELTA_MA",  # 38
+                "CHG_UPPER_SETPT_MA",      # 27
+                "CHG_LOWER_SETPT_MA",      # 28
+                "CHG_MIN_SETPT_MA",        # 29
                 
-                "DIS_TRANS_MA",            # 39
-                "CHG_VAL_INIT",            # 40
-                "DIS_VAL_INIT",            # 41
-                "NUM_CYCLES_PER_TEST",     # 42
-                "num_boots",               # 43
-                "ALPHA_EKF",               # 44
-                "ALPHA_CYC",               # 45
-                "NUM_EKF_CAP",             # 46
-                "NUM_CYC_CAP",             # 47
+                "CHG_SETPT_DELTA_MA",      # 30
+                "CHG_LOW_SETPT_MA",        # 31
+                "CHG_LOW_SETPT_DELTA_MA",  # 32
+                "DIS_SETPT_MA",            # 33
+                "DIS_SETPT_DELTA_MA",      # 34
+                "DIS_LOW_SETPT_MA",        # 35
+                "DIS_LOW_SETPT_DELTA_MA",  # 36
                 
-                "R_state",                 # 48
-                "Q_state1",                # 49
-                "Q_state2",                # 50
-                "Q_param",                 # 51
-                "R_param",                 # 52
-                "beta_window",             # 53
-                "forecast_horizon"]        # 54
+                "DIS_TRANS_MA",            # 37
+                "CHG_VAL_INIT",            # 38
+                "DIS_VAL_INIT",            # 39
+                "NUM_CYCLES_PER_TEST",     # 40
+                "num_boots",               # 41
+                "ALPHA_EKF",               # 42
+                "ALPHA_CYC",               # 43
+                "NUM_EKF_CAP",             # 44
+                "NUM_CYC_CAP",             # 45
+                "NUM_BETA_CAP",            # 46
+                
+                "R_state",                 # 47
+                "Q_state1",                # 48
+                "Q_state2",                # 49
+                "Q_param",                 # 50
+                "R_param",                 # 51
+                "beta_window",             # 52
+                "forecast_horizon"]        # 53
         if index >= len(name_list) or index < 0:
             return None
         else:
@@ -223,7 +215,7 @@ class FSW_PARAMS:
     
     def fetch_parameter_index(self, param_name):
         # this will use the "fetch parameter name" fxn so we only need to maintain one list
-        # it seems hacky, but will actually reduce chance we mess up something
+        # it seems hacky, but will actually reduce chance we mess something
         for i in range(99):
             if param_name == fetch_parameter_name(i):
                 return i

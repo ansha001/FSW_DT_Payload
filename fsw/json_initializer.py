@@ -8,36 +8,35 @@ import os
 import numpy as np
     
 if __name__ == "__main__":
-    param_file    = os.getcwd() + '/PARAMS_LIST.json'
-    fsw_file      = os.getcwd() + '/FSW_BACKUP.json'
-    ch0_file      = os.getcwd() + '/CH0_BACKUP.json'
-    ch1_file      = os.getcwd() + '/CH1_BACKUP.json'
-    ch2_file      = os.getcwd() + '/CH2_BACKUP.json'
-    ekf_cap_file  = os.getcwd() + '/EKF_BACKUP.npy' 
-    cyc_cap_file  = os.getcwd() + '/CYC_BACKUP.npy'
-    beta_cap_file = os.getcwd() + '/BETA_BACKUP.npy'
+    param_file   = os.getcwd() + '/PARAMS_LIST.json'
+    fsw_file     = os.getcwd() + '/FSW_BACKUP.json'
+    ch0_file     = os.getcwd() + '/CH0_BACKUP.json'
+    ch1_file     = os.getcwd() + '/CH1_BACKUP.json'
+    ch2_file     = os.getcwd() + '/CH2_BACKUP.json'
+    ekf_cap_file = os.getcwd() + '/EKF_BACKUP.npy' 
+    cyc_cap_file = os.getcwd() + '/CYC_BACKUP.npy'
+    beta_cap_file= os.getcwd() + '/BETA_BACKUP.npy'
     
     NUM_EKF_CAP = 600
     NUM_CYC_CAP = 360
-    NUM_BETA_CAP = 50
-    beta_window = 2e5
+    NUM_BETA_CAP = 75
+    beta_window = 3e5
     beta_prediction_rate = beta_window / NUM_BETA_CAP
-    cap0_as = 0.04767 * 3600
-    cap1_as = 0.04768 * 3600
-    cap2_as = 0.04769 * 3600
+    cap0_as = 44.0728 * 3.6
+    cap1_as = 44.3632 * 3.6
+    cap2_as = 43.9598 * 3.6
+    cap3_as = 44.4840 * 3.6
+    HEADER = '\x30\x20\x30\x20\x30\x20\x30\x20'
     
     param_vals = {"DT_CHECK_S" : 0.2,          # time step between important checks
-        "DT_COMM_S"  : 0.02,           # time step between checking comm port
-        "DT_SENSORS_S" : 0.1,         # time step between reading sensors, 0.1 s
-        "DT_LOG_S"  : 1.0,            # time step between logs, 1 s 
-        "DT_LOG2_S" : 600,             # time step between type 2 logs, normally 10 minutes
+        "DT_SENSORS_S" : 0.1,         # time step between reading sensors
+        "DT_LOG_S"  : 1.0,            # time step between logs, 1 s all times except during pulse (10 Hz)
+        "DT_LOG2_S" : 120,             # time step between type 2 logs, normally 10 minutes
         "DT_LOG3_S" : 900,            # time step between type 3 logs, normally 15 minutes
         "DT_HEAT_S" : 90,            # time step between checking heater
         "DT_FAST_S" : 1,              # time step between fast loop of EKF
-        "DT_SLOW_S" : 1000,           # time step between slow loop of EKF
+        "DT_SLOW_S" : 1000,           # time step between slow loop of EKF - this isn't used anymore, "slow_loop_rate" is now used
         "DT_BACKUP_S" : 60,           # time step between backups
-        "MIN_MSG_SIZE":  8,
-        "MAX_MSG_SIZE": 13,
         "CHG_LIMIT_V" : 4.20,         # voltage to stop charging
         "DIS_LIMIT_V" : 2.75,         # voltage to stop discharging
         "FB_PULSE1_V" : 3.10,         # fallback voltage for 65% SOC
@@ -54,7 +53,7 @@ if __name__ == "__main__":
         "TEMP_HEATER_OFF_C" : 30,     # above this, turn heater off
         "TEMP_CHG_MAX_C"   : 60,      # above this, stop charging
         "TEMP_CHG_UPPER_C" : 19,      # above this, charge setpoint is -45 mA
-        "TEMP_CHG_LOWER_C" : 10,      # above this, charge setpoint is -27 mA
+        "TEMP_CHG_LOWER_C" : 10,       # above this, charge setpoint is -27 mA
         "TEMP_CHG_MIN_C"   : 0,       # below this, stop charging
         
         "CHG_UPPER_SETPT_MA" : -45,   # nominal setpoint
@@ -72,7 +71,7 @@ if __name__ == "__main__":
         "DIS_TRANS_MA" : 4.9,           #current to transition to low current mode
         "CHG_VAL_INIT" : 9,
         "DIS_VAL_INIT" : 120,
-        "NUM_CYCLES_PER_TEST" : 20,     # typically 20
+        "NUM_CYCLES_PER_TEST" : 200,     # typically 20
         "num_boots" : 0,
         "ALPHA_EKF" : 0.04,
         "ALPHA_CYC" : 0.01,
@@ -80,15 +79,16 @@ if __name__ == "__main__":
         "NUM_CYC_CAP" : NUM_CYC_CAP,
         "NUM_BETA_CAP" : NUM_BETA_CAP,
                   
-        "R_state" : 0.015,                     # Measurement noise covariance
+        "R_state"  : 0.015,                     # Measurement noise covariance
         "Q_state1" : 1e-6,     # Process noise covariance
         "Q_state2" :    1,     # Process noise covariance
-        "Q_param" : 1e-1,                      # Parameter process noise
-        "R_param" : 4.1e-4,                 # Parameter measurement noise
-        "slow_loop_rate" : 2100,  #number of fast loop between slow loop updates
+        "Q_param"  : 1e-1,                      # Parameter process noise
+        "R_param"  : 4.1e-4,                # Parameter measurement noise
+        "slow_loop_rate" : 2100,
         "beta_window" : beta_window,
-        "beta_prediction_rate" : beta_prediction_rate, 
-        "forecast_horizon" : 6e5, }
+        "beta_prediction_rate" : beta_prediction_rate,
+        "forecast_horizon" : 6e5,
+        "HEADER" : HEADER, }
 
     json_str = json.dumps(param_vals) #convert to json str
     
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         "total_rpts" : 0,
         "volt_v" : 0,     
         "temp_c" : 20,
-        "cycle_count" : 19,
+        "cycle_count" : 0,
         "chg_val" : 9,
         "dis_val" : 120,
         "chg_low_val" : 200,
@@ -123,10 +123,10 @@ if __name__ == "__main__":
         "R_SHUNT_OHMS" : 1.0,
         "est_capacity_as" : cap0_as,   # Initial capacity in As
         "est_soc" : 0,
-        "est_cov_state00" : 1e-7, #np.zeros((2, 2)),  # 2x2 covariance matrix for state EKF
+        "est_cov_state00" : 1e-6, #np.zeros((2, 2)),  # 2x2 covariance matrix for state EKF
         "est_cov_state01" : 0,
         "est_cov_state10" : 0,
-        "est_cov_state11" : 1e-7,
+        "est_cov_state11" : 1,
         "est_cov_param" : 1e-1,
         "update_counter" : 0,
         "update_counter_beta" : 0,
@@ -134,18 +134,18 @@ if __name__ == "__main__":
         "pred_ekf_mah" : 0,
         "pred_beta_mah" : 0, }
 
-    json_str = json.dumps(ch_vals) #convert to json str    
+    json_str = json.dumps(ch_vals) #convert to json str
     with open(ch0_file, 'w') as json_out:
         json_out.write(json_str)
         
-    # set values unique to ch1
-    ch_vals["est_capacity_as"] = cap1_as #initial capacity in As
+    #set values unique to ch1
+    ch_vals["est_capacity_as"] = cap1_as
     json_str = json.dumps(ch_vals) #convert to json str
     with open(ch1_file, 'w') as json_out:
         json_out.write(json_str)
     
-    # set values unique to ch2
-    ch_vals["est_capacity_as"] = cap2_as #initial capacity in As
+    #set values unique to ch2
+    ch_vals["est_capacity_as"] = cap2_as
     json_str = json.dumps(ch_vals) #convert to json str
     with open(ch2_file, 'w') as json_out:
         json_out.write(json_str)
@@ -165,7 +165,7 @@ if __name__ == "__main__":
     np.save(ekf_cap_file, ekf_cap_est_mah)
     np.save(cyc_cap_file, cyc_cap_est_mah)
     np.save(beta_cap_file, beta_cap_est_as)
-
+    
     #for debugging, read what we just wrote
     ekf_cap_est_mah = np.load(ekf_cap_file)
     cyc_cap_est_mah = np.load(cyc_cap_file)
