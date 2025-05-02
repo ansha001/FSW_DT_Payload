@@ -3,6 +3,7 @@ import struct
 import zlib
 import time
 import os
+from packet_parser import (parse_group_1_packet, parse_group_2_packet, parse_group_3_packet)
 
 # Constants
 HEADER = b'\x89\x89\x89\x89\x89\x89\x89\x89'  # 64-bit - 0x3020302030203020
@@ -82,7 +83,7 @@ def send_request(ser: serial.Serial, message_type: int, argument: bytes = b""):
     packet = build_packet(message_type, argument)
     ser.write(packet)
     #ser.flush()
-    print(f"[INFO] Sent request: type={message_type}")
+    #print(f"[INFO] Sent request: type={message_type}")
     #print(packet)
     
 
@@ -119,6 +120,33 @@ def handle_buffer(ser, buffer, waiting_bytes):
 #                         #print prased contents 
                     index = struct.unpack('<I', payload[:4])[0]
                     print(f"[RECEIVED] Group: {group_id}, Index: {index}, Payload Size: {len(payload)} bytes")
+                    if group_id == 1 and index%20<1:
+                        data = parse_group_1_packet(payload[4:])
+                        for pt in data:
+                            ti = pt["time"]
+                            vi = pt["voltages"]
+                            ci = pt["currents"]
+                            tt = pt["temps"]
+                            print('TIME: %6.1f;  VOLT: %4.2f, %4.2f, %4.2f;  CURR: %4.1f, %4.1f, %4.1f; TEMP: %4.1f, %4.1f, %4.1f' %
+                                  (ti, vi[0], vi[1], vi[2], ci[0], ci[1], ci[2], tt[0], tt[1], tt[2]))
+                    if group_id == 2:
+                        data = parse_group_2_packet(payload[4:])
+                        for pt in data:
+                            ti = pt['time']
+                            cc = pt['cycle_counts']  #3
+                            rs = pt['resets']
+                            ts = pt['time_switches'] #3
+                            se = pt['test_sequences'] #3
+                            st = pt['states'] #3
+                            mo = pt['modes'] #3
+                            ct = pt['cpu_temp']
+                            cv = pt['cpu_volt']
+                            cf = pt['cpu_freq']
+                            print('TIME: %6.1f; CYCLES: %3.0f, %3.0f, %3.0f; BOOTS: %2.0f; SEQ: %3.0f, %3.0f, %3.0f' %
+                                  (ti, cc[0], cc[1], cc[2], rs, se[0], se[1], se[2])
+                                  +'; STATE:'+st[0]+', '+st[1]+', '+st[2]+'; MODE:'+mo[0]+', '+mo[1]+', '+mo[2])
+                            #print('STATE:'+st[0]+', '+st[1]+', '+st[2]+'; MODE:'+mo[0]+', '+mo[1]+', '+mo[2])
+            
                     folder = f"received_logs/group{group_id}"
                     os.makedirs(folder, exist_ok=True)
                     filename = f"{group_id}_{index}.bin"
