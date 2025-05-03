@@ -59,8 +59,8 @@ def parse_group_2_packet(payload: bytes):
     for i in range(total_entries):
         entry = payload[i * entry_size:(i + 1) * entry_size]
 
-        time_s, cpu_temp, cpu_volt, cpu_freq = struct.unpack('<1f 3e', entry[:8])
-        unpacked = struct.unpack('<3B H 3H 3B 3B 3B', entry[8:])
+        time_s, cpu_temp, cpu_volt, cpu_freq = struct.unpack('<1f 3e', entry[:10])
+        unpacked = struct.unpack('<3B H 3H 3B 3B 3B', entry[10:])
 
         cycle_counts = unpacked[0:3]
         resets = unpacked[3]
@@ -92,17 +92,17 @@ def parse_group_3_packet(payload: bytes):
     for i in range(total_entries):
         entry = payload[i*entry_size:(i+1)*entry_size]
         time_s = struct.unpack('<f', entry[:4])[0]
-        estimator_data = struct.unpack('<36f', entry[4:])
+        estimator_data = struct.unpack('<33f', entry[4:])
         channels = []
         for j in range(3):
             offset = j * 11
             channels.append({
-                "estimated_soc": estimator_data[offset + 0],
-                "estimated_voltage": estimator_data[offset + 1],
-                "cov_state_00": estimator_data[offset + 2],
-                "cov_state_11": estimator_data[offset + 3],
-                "capacity": estimator_data[offset + 4],
-                "cov_param": estimator_data[offset + 5],
+                "est_soc": estimator_data[offset + 0],
+                "volt": estimator_data[offset + 1],
+                "cov00": estimator_data[offset + 2],
+                "cov11": estimator_data[offset + 3],
+                "est_cap": estimator_data[offset + 4],
+                "covp": estimator_data[offset + 5],
                 "cap_cyc": estimator_data[offset+6],
                 "cap_rpt": estimator_data[offset+7],
                 "pred_cyc": estimator_data[offset + 8],
@@ -208,25 +208,41 @@ def write_csv(group_id, entries, output_folder='parsed_csv'):
                     *entry['modes'],
                     entry['cpu_temp'],
                     entry['cpu_volt'],
-                    entry['cpu freq']
+                    entry['cpu_freq']
                 ])
             elif group_id == 3:
                 flat = []
                 for ch in entry['channels']:
                     flat.extend([
-                        ch["estimated_soc"], ch["estimated_voltage"],
-                        ch["cov_state_00"], ch["cov_state_11"],
-                        ch["estimated_capacity"], ch["cov_param"],
-                        ch["cycle_cap"], ch["rpt_cap"], ch["pred_cyc"],
+                        ch["est_soc"], ch["volt"],
+                        ch["cov00"], ch["cov11"],
+                        ch["est_cap"], ch["covp"],
+                        ch["cap_cyc"], ch["cap_rpt"], ch["pred_cyc"],
                         ch["pred_ekf"], ch["pred_beta"]
                     ])
                 writer.writerow([entry["time"]] + flat)
 
 def parse_folder(folder_path):
-    for fname in sorted(os.listdir(folder_path)):
-        if fname.endswith(".bin"):
+    # files need to be sorted by number, not how sorted fxn normally works.
+    badly_sorted_list = sorted(os.listdir(folder_path))
+    first = 10e7
+    last = 1
+    for fname in badly_sorted_list:
+        group_str = fname.split('_')[0].replace(".bin","")
+        index = int(fname.split('_')[1].replace(".bin",""))
+        first = min(first, index)
+        last  = max(last,  index)
+    for i in range(first, last, 1):
+        fname = folder_path + '/' + group_str + '_' + str(i) + '.bin'
+        if os.path.exists(fname):
             print(f"--- Parsing {fname} ---")
             parse_bin_file(os.path.join(folder_path, fname))
+        
+    
+#     for fname in sorted(os.listdir(folder_path)):
+#         if fname.endswith(".bin"):
+#             print(f"--- Parsing {fname} ---")
+#             parse_bin_file(os.path.join(folder_path, fname))
 
 if __name__ == '__main__':
     file_path = input("Enter folder path:").strip()
