@@ -183,11 +183,12 @@ class battery_channel:
                 self.state = 'CHG_REST'
                 self.time_resting_started_s = time_iter_s
                 # move all entries down to make room for new entry
+                self.last_cyc_cap_mah = (1/3600)*abs(self.cc_soc_mas)
                 temp = self.cyc_cap_est_mah[0] #latest entry
                 if temp < 0:
-                    temp = (1/3600)*self.cc_soc_mas
+                    temp = (1/3600)*abs(self.cc_soc_mas)
                 self.cyc_cap_est_mah[1:]=self.cyc_cap_est_mah[:-1]
-                self.cyc_cap_est_mah[0] = (1-PARAMS.ALPHA_CYC)*temp + PARAMS.ALPHA_CYC*(1/3600)*self.cc_soc_mas
+                self.cyc_cap_est_mah[0] = (1-PARAMS.ALPHA_CYC)*temp + PARAMS.ALPHA_CYC*self.last_cyc_cap_mah
             elif self.state == 'CHG':
                 self.cc_soc_mas = self.cc_soc_mas - self.curr_ma * (time_iter_s - self.time_prev_s)
                 self.time_prev_s = time_iter_s
@@ -196,10 +197,10 @@ class battery_channel:
                 self.state = 'DIS_REST'
                 self.time_resting_started_s = time_iter_s
                 # move all entries down to make room for new entry
-                self.last_cyc_cap_mah = (1/3600)*self.cc_soc_mas
+                self.last_cyc_cap_mah = (1/3600)*abs(self.cc_soc_mas)
                 temp = self.cyc_cap_est_mah[0] #latest entry
                 if temp < 0:
-                    temp = (1/3600)*self.cc_soc_mas
+                    temp = (1/3600)*abs(self.cc_soc_mas)
                 self.cyc_cap_est_mah[1:]=self.cyc_cap_est_mah[:-1]
                 self.cyc_cap_est_mah[0] = (1-PARAMS.ALPHA_CYC)*temp + PARAMS.ALPHA_CYC*self.last_cyc_cap_mah
             elif self.state == 'DIS':

@@ -484,9 +484,9 @@ if __name__ == "__main__":
                         last_mode[i] = ch.mode
 
                 time_switches = [
-                    int(time_iter_s - last_mode_switch[0]),
-                    int(time_iter_s - last_mode_switch[1]),
-                    int(time_iter_s - last_mode_switch[2])]
+                    int(time_iter_s - last_mode_switch[0])%36000,
+                    int(time_iter_s - last_mode_switch[1])%36000,
+                    int(time_iter_s - last_mode_switch[2])%36000]
                   
                 #overwrite logic for testing  
                   

@@ -31,7 +31,7 @@ if __name__ == "__main__":
     param_vals = {"DT_CHECK_S" : 0.2,          # time step between important checks
         "DT_SENSORS_S" : 0.1,         # time step between reading sensors
         "DT_LOG_S"  : 1.0,            # time step between logs, 1 s all times except during pulse (10 Hz)
-        "DT_LOG2_S" : 120,             # time step between type 2 logs, normally 10 minutes
+        "DT_LOG2_S" : 180,             # time step between type 2 logs, normally 10 minutes
         "DT_LOG3_S" : 900,            # time step between type 3 logs, normally 15 minutes
         "DT_HEAT_S" : 90,            # time step between checking heater
         "DT_FAST_S" : 1,              # time step between fast loop of EKF
@@ -71,10 +71,10 @@ if __name__ == "__main__":
         "DIS_TRANS_MA" : 4.9,           #current to transition to low current mode
         "CHG_VAL_INIT" : 9,
         "DIS_VAL_INIT" : 120,
-        "NUM_CYCLES_PER_TEST" : 200,     # typically 20
+        "NUM_CYCLES_PER_TEST" : 20,     # typically 20
         "num_boots" : 0,
         "ALPHA_EKF" : 0.04,
-        "ALPHA_CYC" : 0.01,
+        "ALPHA_CYC" : 0.02,
         "NUM_EKF_CAP" : NUM_EKF_CAP,
         "NUM_CYC_CAP" : NUM_CYC_CAP,
         "NUM_BETA_CAP" : NUM_BETA_CAP,
@@ -123,10 +123,10 @@ if __name__ == "__main__":
         "R_SHUNT_OHMS" : 1.0,
         "est_capacity_as" : cap0_as,   # Initial capacity in As
         "est_soc" : 0,
-        "est_cov_state00" : 1e-6, #np.zeros((2, 2)),  # 2x2 covariance matrix for state EKF
+        "est_cov_state00" : 1e-7, #np.zeros((2, 2)),  # 2x2 covariance matrix for state EKF
         "est_cov_state01" : 0,
         "est_cov_state10" : 0,
-        "est_cov_state11" : 1,
+        "est_cov_state11" : 1e-7,
         "est_cov_param" : 1e-1,
         "update_counter" : 0,
         "update_counter_beta" : 0,
