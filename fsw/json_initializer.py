@@ -71,7 +71,7 @@ if __name__ == "__main__":
         "DIS_TRANS_MA" : 4.9,           #current to transition to low current mode
         "CHG_VAL_INIT" : 9,
         "DIS_VAL_INIT" : 120,
-        "NUM_CYCLES_PER_TEST" : 20,     # typically 20
+        "NUM_CYCLES_PER_TEST" : 100,     # typically 20
         "num_boots" : 0,
         "ALPHA_EKF" : 0.04,
         "ALPHA_CYC" : 0.02,
